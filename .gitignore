@@ -1,0 +1,13 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+premium-audit.json
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.log
+.DS_Store
+Thumbs.db
