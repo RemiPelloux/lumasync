@@ -319,7 +319,7 @@ pub async fn rooms(credentials: &Credentials) -> Result<Vec<HueRoom>, String> {
             })
         })
         .collect::<Vec<_>>();
-    rooms.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    rooms.sort_by_key(|room| room.name.to_lowercase());
     Ok(rooms)
 }
 
