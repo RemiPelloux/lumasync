@@ -1,0 +1,220 @@
+.button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, transform 120ms ease;
+}
+
+.button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.button:disabled {
+  opacity: 0.48;
+}
+
+.button--primary {
+  color: #0a0b16;
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
+}
+
+.button--primary:hover:not(:disabled) {
+  background: #d6cfff;
+  border-color: #d6cfff;
+}
+
+.button--secondary {
+  background: #171c34;
+  border-color: var(--color-border);
+}
+
+.button--ghost {
+  color: var(--color-text-muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+.button--ghost:hover:not(:disabled) {
+  color: var(--color-text);
+  background: #171c34;
+}
+
+.button--danger {
+  color: #2b0710;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.button--danger:hover:not(:disabled) {
+  background: #ff98a8;
+  border-color: #ff98a8;
+}
+
+.button__slot {
+  width: 15px;
+  height: 15px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.button__slot svg {
+  width: 14px;
+  height: 14px;
+}
+
+.button--compact {
+  min-height: 28px;
+  gap: 5px;
+  padding-inline: 7px;
+  color: var(--color-text-muted);
+  font-size: 9px;
+}
+
+.button--compact .button__slot {
+  width: 13px;
+  height: 13px;
+}
+
+.spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.mapping-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid rgb(51 60 97 / 72%);
+}
+
+.room-recovery {
+  display: grid;
+  gap: 12px;
+}
+
+.room-recovery__message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgb(255 203 119 / 30%);
+  border-radius: var(--radius-md);
+  color: #ffe2ad;
+  background: rgb(255 203 119 / 7%);
+}
+
+.room-recovery__message svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.room-recovery__message strong {
+  font-size: 12px;
+}
+
+.room-recovery__message p,
+.room-recovery__note {
+  margin: 3px 0 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.room-recovery__note {
+  margin: 0;
+}
+
+.room-recovery > .button {
+  width: 100%;
+}
+
+.mapping-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.light-name {
+  min-width: 0;
+  color: #cbd0e6;
+  font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.zone-picker {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 2px;
+  border: 1px solid #2e3558;
+  border-radius: 8px;
+  background: #0a0e1e;
+}
+
+.mapping-mode {
+  display: grid;
+  gap: 4px;
+}
+
+.mapping-mode__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.mapping-mode .option-button {
+  min-width: 48px;
+}
+
+.zone-picker--corners {
+  display: grid;
+  grid-template-columns: repeat(2, 28px);
+  gap: 2px;
+}
+
+.zone-picker--corners .zone-button {
+  width: 28px;
+}
+
+.zone-button {
+  width: 26px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  color: #858eaf;
+  background: transparent;
+  font-family: var(--font-utility);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.zone-button:hover:not(:disabled) {
+  color: var(--color-text);
+  background: #1a203d;
+}
+
+.zone-button--active {
+  color: #0b0c17;
+  background: var(--color-primary-strong);
+}

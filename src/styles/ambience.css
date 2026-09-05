@@ -1,0 +1,162 @@
+.edge-marker {
+  --marker: #343b63;
+  position: absolute;
+  z-index: 5;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--marker), white 28%);
+  border-radius: 8px;
+  color: #f7f7ff;
+  background: color-mix(in srgb, var(--marker), #0b1022 54%);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--marker), transparent 38%);
+  font-family: var(--font-utility);
+  font-size: 8px;
+  font-weight: 700;
+  transition: border-color 100ms linear, background-color 100ms linear, box-shadow 100ms linear;
+}
+
+.edge-marker--left {
+  top: 50%;
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.edge-marker--right {
+  top: 50%;
+  right: 0;
+  transform: translate(50%, -50%);
+}
+
+.edge-marker--top {
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.edge-marker--bottom {
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 50%);
+}
+
+.edge-marker--topLeft,
+.edge-marker--topRight,
+.edge-marker--bottomLeft,
+.edge-marker--bottomRight {
+  width: 28px;
+}
+
+.edge-marker--topLeft {
+  top: 0;
+  left: 0;
+  transform: translate(-35%, -35%);
+}
+
+.edge-marker--topRight {
+  top: 0;
+  right: 0;
+  transform: translate(35%, -35%);
+}
+
+.edge-marker--bottomLeft {
+  bottom: 0;
+  left: 0;
+  transform: translate(-35%, 35%);
+}
+
+.edge-marker--bottomRight {
+  bottom: 0;
+  right: 0;
+  transform: translate(35%, 35%);
+}
+
+.ambient {
+  --ambient: #343b63;
+  position: absolute;
+  z-index: 1;
+  width: min(68%, 480px);
+  height: 38%;
+  pointer-events: none;
+  opacity: 0.28;
+  filter: blur(36px) saturate(130%);
+  background: var(--ambient);
+  transition: background-color 100ms linear, opacity 220ms ease;
+  will-change: background-color;
+}
+
+.screen-scene--live .ambient {
+  opacity: 0.72;
+}
+
+.ambient--left {
+  left: 3%;
+  transform: translateX(-30%) rotate(90deg);
+}
+
+.ambient--right {
+  right: 3%;
+  transform: translateX(30%) rotate(90deg);
+}
+
+.ambient--top {
+  top: 12%;
+  transform: translateY(-36%);
+}
+
+.ambient--bottom {
+  bottom: 10%;
+  transform: translateY(36%);
+}
+
+.ambient--topLeft,
+.ambient--topRight,
+.ambient--bottomLeft,
+.ambient--bottomRight {
+  width: min(42%, 280px);
+  height: 38%;
+}
+
+.ambient--topLeft {
+  top: 8%;
+  left: 2%;
+  transform: translate(-18%, -18%);
+}
+
+.ambient--topRight {
+  top: 8%;
+  right: 2%;
+  transform: translate(18%, -18%);
+}
+
+.ambient--bottomLeft {
+  bottom: 8%;
+  left: 2%;
+  transform: translate(-18%, 18%);
+}
+
+.ambient--bottomRight {
+  bottom: 8%;
+  right: 2%;
+  transform: translate(18%, 18%);
+}
+
+.stage__footer {
+  min-height: 42px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(56 65 105 / 54%);
+}
+
+.privacy-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.privacy-note svg {
+  flex: 0 0 auto;
+  color: var(--color-success);
+}

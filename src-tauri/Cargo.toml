@@ -1,6 +1,6 @@
 [package]
 name = "lumasync"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local Philips Hue screen lighting"
 authors = ["LumaSync contributors"]
 edition = "2021"
@@ -29,6 +29,9 @@ tauri = { version = "2.11", features = [] }
 tokio = { version = "1", features = ["time", "macros"] }
 uuid = "1"
 xcap = "0.9.8"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi"] }
 
 [profile.release]
 lto = "thin"

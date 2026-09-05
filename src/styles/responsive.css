@@ -1,0 +1,228 @@
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  }
+
+  .profile-button {
+    min-height: 40px;
+    padding: 5px;
+  }
+
+  .telemetry strong {
+    font-size: 8px;
+  }
+}
+
+@media (max-width: 980px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .stage {
+    order: -1;
+    height: auto;
+    max-height: none;
+    min-height: 320px;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: none;
+    overflow: visible;
+  }
+
+  .intro,
+  .setup-panel,
+  .error-banner {
+    grid-column: 1 / -1;
+  }
+
+  .telemetry {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ambient {
+    filter: blur(22px) saturate(120%);
+  }
+
+  .mapping-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .zone-picker,
+  .zone-picker--corners {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    padding-block: 8px;
+    gap: 6px;
+  }
+
+  .topbar__status {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .workspace {
+    padding-top: 10px;
+  }
+
+  .controls {
+    display: flex;
+  }
+
+  .intro h1 {
+    font-size: 16px;
+  }
+
+  .stage {
+    min-height: 280px;
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .screen-scene {
+    min-height: 180px;
+  }
+
+  .monitor-frame {
+    width: min(96%, 480px);
+  }
+
+  .monitor-screen strong {
+    font-size: clamp(14px, 4vw, 18px);
+  }
+
+  .stage__footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .stage__footer .button {
+    width: 100%;
+  }
+
+  .stage__meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .panel__heading--action {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .panel__heading--action .button--compact {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .profile-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-button {
+    grid-template-columns: auto minmax(0, 1fr);
+    text-align: left;
+  }
+
+  .cadence-control,
+  .toggle-row,
+  .mapping-mode .cadence-control {
+    flex-wrap: wrap;
+  }
+
+  .ambient {
+    filter: blur(14px) saturate(115%);
+    opacity: 0.36;
+  }
+
+  .screen-scene--live .ambient {
+    opacity: 0.5;
+  }
+
+  .edge-marker {
+    width: 20px;
+    height: 20px;
+    font-size: 7px;
+  }
+
+  .edge-marker--topLeft,
+  .edge-marker--topRight,
+  .edge-marker--bottomLeft,
+  .edge-marker--bottomRight {
+    width: 22px;
+  }
+}
+
+@media (max-width: 480px) {
+  .manual-bridge__control,
+  .action-row {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .action-row {
+    justify-content: stretch;
+  }
+
+  .action-row .button {
+    width: 100%;
+  }
+
+  .telemetry {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .privacy-note {
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important; /* Accessibility override: disable authored motion globally. */
+    animation-duration: 0.01ms !important; /* Accessibility override: keep state changes perceivable without motion. */
+    animation-iteration-count: 1 !important; /* Accessibility override. */
+    transition-duration: 0.01ms !important; /* Accessibility override. */
+  }
+
+  .ambient {
+    filter: none;
+    opacity: 0.55;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    scrollbar-color: auto;
+  }
+
+  .status-dot,
+  .ambient,
+  .edge-marker,
+  .toggle-indicator {
+    forced-color-adjust: none;
+  }
+}

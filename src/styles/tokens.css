@@ -1,0 +1,91 @@
+:root {
+  --color-canvas: #070a16;
+  --color-surface: #0e1327;
+  --color-surface-raised: #151b34;
+  --color-border: #2a3151;
+  --color-text: #f3f5ff;
+  --color-text-muted: #9aa3c6;
+  --color-primary: #9c8cff;
+  --color-primary-strong: #c4b9ff;
+  --color-success: #66e3b4;
+  --color-warning: #ffcb77;
+  --color-danger: #ff7d91;
+  --color-focus: #8edbff;
+  --font-display: Bahnschrift, "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --font-body: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-utility: "Cascadia Code", Consolas, monospace;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.7rem;
+  --radius-lg: 0.95rem;
+  --radius-pill: 999px;
+  --shadow-scene: 0 16px 42px rgb(0 0 0 / 38%);
+  color: var(--color-text);
+  background: var(--color-canvas);
+  font-family: var(--font-body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  scrollbar-color: #434d78 #0b0f20;
+  scrollbar-width: thin;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #0b0f20;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #434d78;
+  border: 2px solid #0b0f20;
+  border-radius: var(--radius-pill);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #59658f;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: #727eaa;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--color-canvas);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+  background:
+    radial-gradient(circle at 76% 48%, rgb(43 54 104 / 18%), transparent 42%),
+    var(--color-canvas);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+}

@@ -61,7 +61,7 @@ L’interface évoque un pupitre de régie lumière posé dans une pièce sombre
 - **Instrumentation signature:** une réglette compacte au-dessus de l’écran expose cadence, temps de traitement, cadre utile et stabilité comme sur un moniteur de régie ; elle reste secondaire face au halo.
 - **Restraint:** réglages, états réseau et association restent calmes, sans gradients décoratifs ni animations permanentes.
 - **Anti-references:** pas de néon « gamer » omniprésent, pas de cartes vitrées génériques, pas de fausse visualisation audio.
-- **Token ownership/runtime mapping:** ce fichier est la source durable ; les valeurs sont reportées une seule fois en variables CSS dans `src/styles.css`, consommées par les composants React.
+- **Token ownership/runtime mapping:** ce fichier est la source durable ; les variables CSS sont définies dans `src/styles/tokens.css`. `src/styles.css` importe les feuilles spécialisées dans l’ordre historique, sans changer la cascade.
 
 ## Colors
 
@@ -115,7 +115,7 @@ Lucide, trait 1,8 px, 18–20 px. Une icône ne remplace un libellé que pour un
 
 ### Motion
 
-Les changements de halo se lissent côté Rust avec une constante temporelle indépendante de la cadence et une anticipation de vitesse pour compenser la latence capture→pont. Une capture GPU persistante alimente toutes les zones depuis le même instant ; les images accumulées sont jetées au profit de la plus récente. L’échantillonnage s’allège automatiquement si le budget d’image est dépassé. L’interface utilise des transitions de 180 ms pour les contrôles et de 100 ms pour les couleurs en direct, jamais pour retarder une action. Sur fenêtre étroite, l’aperçu passe au-dessus des réglages et le flou d’ambiance est réduit pour préserver les performances. `prefers-reduced-motion` supprime les déplacements, les pulsations et le flou.
+Les changements de halo se lissent côté Rust en Oklab avec une coupure adaptative et une extrapolation plafonnée à 12 ms. La capture DXGI n’accumule pas d’images ; une grille fixe alimente toutes les zones. Les cônes regardent vers l’intérieur depuis les coins ou les côtés. « Portée du cône » est un indice de 5 à 30, pas un pourcentage de pixels. La cadence affichée compte les envois Hue, même sur un bureau immobile. L’interface conserve ses transitions de 180 ms pour les contrôles et de 100 ms pour les couleurs. Sur fenêtre étroite, l’aperçu passe au-dessus des réglages et le flou d’ambiance est réduit. `prefers-reduced-motion` supprime les déplacements, les pulsations et le flou.
 
 ### Content and data visualization
 

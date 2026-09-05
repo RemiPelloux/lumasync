@@ -4,17 +4,17 @@
 
 Ambilight local et réactif pour Philips Hue, construit avec Rust, Tauri et React/TypeScript.
 
-LumaSync capture les couleurs aux bords de l’écran et les diffuse vers une zone Hue Entertainment. Le traitement reste entièrement local : aucune image de l’écran ni clé Hue ne quitte le PC.
+LumaSync analyse l’écran en cônes orientés vers son centre et diffuse les couleurs vers une zone Hue Entertainment. Les images restent sur le PC ; seules les couleurs calculées et les échanges d’authentification sont envoyés au pont local.
 
 ## Fonctionnalités
 
 - streaming basse latence via Hue Entertainment et DTLS 1.2 PSK ;
-- capture GPU persistante, avec abandon automatique des images devenues obsolètes ;
+- capture DXGI sans file d’images, texture et tampon mémoire réutilisés ;
 - quatre zones configurables en disposition **Bords** ou **Angles** ;
 - profils **Cinéma**, **Jeu** et **Naturel** ;
-- extraction perceptuelle des couleurs avec rejet des sous-titres et HUD blancs ;
+- histogramme circulaire de teintes, variance Oklab et atténuation des petites zones blanches ;
 - lissage prédictif, anti-scintillement et détection automatique des bandes noires ;
-- adaptation de la charge aux écrans haute résolution ;
+- grille fixe de 3 600 échantillons au maximum, indépendante de la résolution ;
 - télémétrie en direct : FPS, temps de traitement et images manquées ;
 - détection du Hue Bridge et création d’une zone Entertainment depuis une pièce existante.
 
@@ -50,6 +50,7 @@ Commandes utiles :
 
 ```powershell
 npm run check
+npm run check:size
 npm test
 npm run build
 npm run tauri build
@@ -71,6 +72,14 @@ Hue Bridge               distribution Hue Entertainment vers les lampes
 ```
 
 Le moteur lit une seule image cohérente pour toutes les zones, calcule chaque zone unique une seule fois, puis envoie les couleurs dans la même trame Entertainment. Les ressources Hue indépendantes sont chargées en parallèle afin de limiter les allers-retours réseau.
+
+Les formules, tests, corrections de latence et limites sont décrits dans
+[`docs/ALGORITHM.md`](docs/ALGORITHM.md). La prédiction porte sur les couleurs des
+zones pendant au plus 12 ms ; elle ne devine pas les pixels des images futures.
+Le moteur cible le SDR sRGB, sans calibration HDR ou optique des lampes.
+
+Tous les fichiers rédigés sont limités à 349 lignes par `npm run check:size` et la CI.
+Les fichiers de verrouillage générés Cargo/npm restent intacts et sont exclus.
 
 ## Sécurité et confidentialité
 
