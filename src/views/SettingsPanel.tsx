@@ -13,13 +13,13 @@ export function SettingsPanel({ studio }: { studio: Studio }) {
         <div><span className="step-label">Rendu</span><h2>Réglages</h2></div>
         <Button
           variant="ghost"
-          className="button--compact"
+          className="icon-button"
           icon={<RotateCcw size={15} />}
+          aria-label="Réinitialiser les réglages"
+          title="Réinitialiser les réglages"
           disabled={isRunning}
           onClick={() => setSettings(DEFAULT_SETTINGS)}
-        >
-          Réinitialiser
-        </Button>
+        />
       </div>
       <div className="profile-picker" role="group" aria-label="Profil de rendu">
         {PROFILES.map((profile) => {
@@ -41,10 +41,8 @@ export function SettingsPanel({ studio }: { studio: Studio }) {
       </div>
       <div className="sliders">
         <RangeControl label="Luminosité" value={settings.brightness} min={10} max={100} suffix="%" disabled={isRunning} onChange={(value) => updateSetting("brightness", value)} />
-        <RangeControl label="Luminosité max" value={settings.maxLuminosity} min={20} max={100} suffix="%" disabled={isRunning} onChange={(value) => updateSetting("maxLuminosity", value)} />
         <RangeControl label="Saturation" value={settings.saturation} min={40} max={150} suffix="%" disabled={isRunning} onChange={(value) => updateSetting("saturation", value)} />
         <RangeControl label="Réactivité" value={settings.reactivity} min={10} max={100} suffix="%" disabled={isRunning} onChange={(value) => updateSetting("reactivity", value)} />
-        <RangeControl label="Portée du cône" value={settings.edgeDepth} min={5} max={30} suffix="" disabled={isRunning} onChange={(value) => updateSetting("edgeDepth", value)} />
       </div>
       <div className="render-options">
         <div className="cadence-control">
@@ -67,14 +65,22 @@ export function SettingsPanel({ studio }: { studio: Studio }) {
         <button
           type="button"
           className="toggle-row"
-          aria-pressed={settings.blackBarDetection}
+          role="switch"
+          aria-checked={settings.blackBarDetection}
           disabled={isRunning}
           onClick={() => updateSetting("blackBarDetection", !settings.blackBarDetection)}
         >
-          <span><strong>Bandes noires automatiques</strong><small>Recentre les cônes sur l’image utile en format cinéma</small></span>
+          <span><strong>Bandes noires automatiques</strong></span>
           <span className={`toggle-indicator ${settings.blackBarDetection ? "toggle-indicator--on" : ""}`} aria-hidden="true"><span /></span>
         </button>
       </div>
+      <details className="advanced-settings">
+        <summary>Réglages avancés</summary>
+        <div className="sliders">
+          <RangeControl label="Luminosité max" value={settings.maxLuminosity} min={20} max={100} suffix="%" disabled={isRunning} onChange={(value) => updateSetting("maxLuminosity", value)} />
+          <RangeControl label="Portée du cône" value={settings.edgeDepth} min={5} max={30} suffix="" disabled={isRunning} onChange={(value) => updateSetting("edgeDepth", value)} />
+        </div>
+      </details>
     </Panel>
   );
 }

@@ -1,4 +1,53 @@
-# Vérification 0.3.0 — 5 septembre 2026
+# Vérification du 11 septembre 2026
+
+## Tests et parcours
+
+- 47 tests Rust réussis ; benchmark et test de capture ignorés par défaut.
+- 13 tests frontend réussis : persistance, restauration, bornes, identité des
+  lampes, moniteurs déplacés et comparaison du statut.
+- 6 parcours Playwright réussis sous Edge : configuration, profils et placement
+  après rechargement, démarrage et arrêt, erreur du moteur, export du journal,
+  récupération du suivi, données de journal malformées et création depuis une pièce.
+- Les parcours asynchrones vérifient aussi le double clic, une réponse de statut
+  obsolète, l’absence de lectures concurrentes et la relance d’un arrêt incomplet.
+- Captures inspectées à 1 040 × 680 et en fenêtres étroites. Les contrôles de
+  débordement horizontal et de chevauchement passent à 320, 390 et 860 px.
+- TypeScript strict, build Vite, format Rust, Clippy sans avertissement et contrôle
+  de taille réussis. Les tests frontend et navigateur sont ajoutés à la CI ;
+  la CI distante n’a pas été exécutée dans cette session.
+
+## Analyse CPU avant/après
+
+Même machine, images synthétiques 4K, 500 itérations après échauffement, build
+Release. Ces valeurs mesurent uniquement l’analyse, sans capture ni flux Hue.
+
+| Scène | Avant p50 | Après p50 |
+| --- | --- | --- |
+| Couleurs variées, 8 zones | 0,357 ms | 0,353 ms |
+| Couleurs variées, 4 zones | 0,302 ms | 0,299 ms |
+| Couleurs variées, 1 zone | 0,278 ms | 0,253 ms |
+| Blanc uniforme, 8 zones | 0,281 ms | 0,033 ms |
+
+Le gain est surtout visible sur les aplats grâce à la réutilisation exacte des
+observations. Les scènes variées en huit zones restent pratiquement inchangées.
+
+## Capture locale et limites
+
+Le test DXGI lit le bureau 3 840 × 2 160 pendant deux secondes sans enregistrer
+ni transmettre d’image : 78 images fraîches, copie p50 8,774 ms, appels p95
+9,106 ms. Le test contient une pause de 16 ms par appel ; il ne mesure pas le
+plafond de cadence du moteur ni le délai radio/optique des lampes.
+
+Les parcours navigateur utilisent des données simulées et des fixtures IPC.
+L’exécutable Release et l’installeur NSIS 0.3.0 sont générés. Le démarrage natif
+est vérifié avec une fenêtre répondant aux messages Windows. Le journal réel
+confirme ensuite une session Hue de quatre lampes à 45 i/s cible, la capture
+DXGI, puis l’arrêt du worker, du flux et de l’application à la fermeture.
+Le journal persiste dans `%LOCALAPPDATA%/com.local.lumasync/logs/diagnostics.jsonl`.
+La stabilité des couleurs dans une pièce et la latence optique nécessitent encore
+une mesure matérielle ; les événements de démarrage ne mesurent pas ces délais.
+
+## Historique : 5 septembre 2026
 
 ## Automatique
 

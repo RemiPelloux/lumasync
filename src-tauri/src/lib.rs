@@ -1,33 +1,26 @@
 mod capture;
+mod diagnostics;
 mod discovery;
 mod dtls;
 mod hue;
 mod models;
+mod sync;
 
 use models::{
-    BridgeInfo, Credentials, EntertainmentArea, HueRoom, MonitorInfo, StartSyncRequest, SyncPhase,
-    SyncStatus,
+    BridgeInfo, Credentials, EntertainmentArea, HueRoom, MonitorInfo, StartSyncRequest, SyncStatus,
 };
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-use std::thread::JoinHandle;
-use tauri::State;
+use tauri::{Manager, State};
 use xcap::Monitor;
 
 #[derive(Clone, Default)]
 struct AppState {
     credentials: Arc<Mutex<Option<Credentials>>>,
-    sync_status: Arc<Mutex<SyncStatus>>,
-    active_sync: Arc<Mutex<Option<ActiveSync>>>,
-}
-
-struct ActiveSync {
-    stop: Arc<AtomicBool>,
-    handle: JoinHandle<()>,
-    credentials: Credentials,
-    area_id: String,
+    sync: Arc<sync::Controller>,
+    shutdown_complete: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -144,152 +137,22 @@ async fn get_monitors() -> Result<Vec<MonitorInfo>, String> {
 
 #[tauri::command]
 async fn start_sync(request: StartSyncRequest, state: State<'_, AppState>) -> Result<(), String> {
-    capture::validate_assignments(&request.assignments)?;
-    if !(10.0..=100.0).contains(&request.brightness)
-        || !(40.0..=150.0).contains(&request.saturation)
-        || !(10.0..=100.0).contains(&request.reactivity)
-        || !(20.0..=100.0).contains(&request.max_luminosity)
-        || !(5.0..=30.0).contains(&request.edge_depth)
-        || !(10..=60).contains(&request.fps)
-    {
-        return Err("Un réglage de capture est hors limites.".to_owned());
-    }
-
-    {
-        let mut active = state
-            .active_sync
-            .lock()
-            .map_err(|_| "L’état de synchronisation est indisponible.".to_owned())?;
-        if let Some(current) = active.as_ref() {
-            if !current.handle.is_finished() {
-                return Err("L’éclairage est déjà en cours.".to_owned());
-            }
-        }
-        *active = None;
-    }
-
-    let credentials = state
-        .credentials
-        .lock()
-        .map_err(|_| "L’état du pont est indisponible.".to_owned())?
-        .clone()
-        .ok_or_else(|| "Associez d’abord le Hue Bridge.".to_owned())?;
-
-    {
-        let mut status = state
-            .sync_status
-            .lock()
-            .map_err(|_| "L’état de synchronisation est indisponible.".to_owned())?;
-        status.phase = SyncPhase::Starting;
-        status.running = false;
-        status.message = "Ouverture du flux Hue…".to_owned();
-        status.measured_fps = 0.0;
-        status.frame_time_ms = 0.0;
-        status.dropped_frames = 0;
-        status.black_bars_detected = false;
-        status.colors.clear();
-    }
-
-    if let Err(error) = hue::start_entertainment(&credentials, &request.area_id).await {
-        if let Ok(mut status) = state.sync_status.lock() {
-            status.phase = SyncPhase::Error;
-            status.message = error.clone();
-        }
-        return Err(error);
-    }
-
-    let stop = Arc::new(AtomicBool::new(false));
-    let stop_for_thread = Arc::clone(&stop);
-    let status = Arc::clone(&state.sync_status);
-    let cleanup_credentials = credentials.clone();
-    let area_id = request.area_id.clone();
-    let cleanup_area = area_id.clone();
-    let handle = std::thread::Builder::new()
-        .name("lumasync-capture".to_owned())
-        .spawn(move || {
-            let result = capture::run_capture(
-                cleanup_credentials.clone(),
-                request,
-                stop_for_thread.clone(),
-                Arc::clone(&status),
-            );
-            if let Err(error) = result {
-                if let Ok(mut current) = status.lock() {
-                    current.running = false;
-                    current.phase = SyncPhase::Error;
-                    current.message = error;
-                    current.measured_fps = 0.0;
-                    current.frame_time_ms = 0.0;
-                }
-                let _ = tauri::async_runtime::block_on(hue::stop_entertainment(
-                    &cleanup_credentials,
-                    &cleanup_area,
-                ));
-            }
-        })
-        .map_err(|error| format!("La capture n’a pas pu démarrer : {error}"))?;
-
-    *state
-        .active_sync
-        .lock()
-        .map_err(|_| "L’état de synchronisation est indisponible.".to_owned())? =
-        Some(ActiveSync {
-            stop,
-            handle,
-            credentials,
-            area_id,
-        });
-    Ok(())
+    state
+        .sync
+        .start(current_credentials(&state)?, request)
+        .await
 }
 
 #[tauri::command]
 async fn stop_sync(state: State<'_, AppState>) -> Result<(), String> {
-    let active = {
-        let mut guard = state
-            .active_sync
-            .lock()
-            .map_err(|_| "L’état de synchronisation est indisponible.".to_owned())?;
-        guard.take()
-    };
-    let Some(active) = active else {
-        return Ok(());
-    };
-    if let Ok(mut status) = state.sync_status.lock() {
-        status.phase = SyncPhase::Stopping;
-        status.message = "Arrêt du flux Hue…".to_owned();
-    }
-    active.stop.store(true, Ordering::Relaxed);
-    let credentials = active.credentials.clone();
-    let area_id = active.area_id.clone();
-    tauri::async_runtime::spawn_blocking(move || active.handle.join())
-        .await
-        .map_err(|error| format!("L’arrêt de la capture s’est interrompu : {error}"))?
-        .map_err(|_| "La capture s’est arrêtée de façon inattendue.".to_owned())?;
-    let stop_result = hue::stop_entertainment(&credentials, &area_id).await;
-    if let Ok(mut status) = state.sync_status.lock() {
-        status.running = false;
-        status.phase = if stop_result.is_ok() {
-            SyncPhase::Idle
-        } else {
-            SyncPhase::Error
-        };
-        status.message = stop_result
-            .as_ref()
-            .map(|_| "Éclairage arrêté".to_owned())
-            .unwrap_or_else(|error| error.clone());
-        status.measured_fps = 0.0;
-        status.frame_time_ms = 0.0;
-        status.dropped_frames = 0;
-        status.black_bars_detected = false;
-        status.colors.clear();
-    }
-    stop_result
+    state.sync.stop().await
 }
 
 #[tauri::command]
 fn get_sync_status(state: State<'_, AppState>) -> Result<SyncStatus, String> {
     state
-        .sync_status
+        .sync
+        .status
         .lock()
         .map(|status| status.clone())
         .map_err(|_| "L’état de synchronisation est indisponible.".to_owned())
@@ -299,6 +162,10 @@ fn get_sync_status(state: State<'_, AppState>) -> Result<SyncStatus, String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .setup(|app| {
+            diagnostics::initialize(app.path().app_log_dir().map_err(|error| error.to_string()));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             discover_bridges,
             restore_bridge,
@@ -309,8 +176,30 @@ pub fn run() {
             get_monitors,
             start_sync,
             stop_sync,
-            get_sync_status
+            get_sync_status,
+            diagnostics::get_diagnostics,
+            diagnostics::clear_diagnostics,
+            diagnostics::log_frontend_event
         ])
-        .run(tauri::generate_context!())
-        .expect("LumaSync could not start");
+        .build(tauri::generate_context!())
+        .expect("LumaSync could not start")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                let state = app.state::<AppState>();
+                if state.shutdown_complete.load(Ordering::Acquire) {
+                    return;
+                }
+                api.prevent_exit();
+                if state.sync.begin_shutdown() {
+                    let (app, state) = (app.clone(), state.inner().clone());
+                    tauri::async_runtime::spawn(async move {
+                        let _ = state.sync.stop().await;
+                        diagnostics::info("application.exit", "Application shutdown completed.");
+                        let _ = tauri::async_runtime::spawn_blocking(diagnostics::flush).await;
+                        state.shutdown_complete.store(true, Ordering::Release);
+                        app.exit(0);
+                    });
+                }
+            }
+        });
 }

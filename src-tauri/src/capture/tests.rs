@@ -236,3 +236,104 @@ fn every_cone_includes_the_center_even_on_a_single_pixel_frame() {
         assert_eq!(sample(&image, zone), [255, 255, 255]);
     }
 }
+
+#[test]
+fn inactive_zones_do_not_change_active_colors_after_recropping() {
+    let image = frame(RgbaImage::from_fn(160, 100, |x, y| {
+        Rgba([(x * 5) as u8, (y * 3) as u8, (x + y) as u8, 255])
+    }));
+    let full = ContentBounds::full(&image);
+    let crop = ContentBounds {
+        top: 13,
+        bottom: 87,
+        ..full
+    };
+    let mut reference = Analyzer::new(full, [true; 8], 5.0);
+    for zone in 0..8 {
+        let active = std::array::from_fn(|i| i == zone);
+        let mut analyzer = Analyzer::new(full, active, 5.0);
+        for bounds in [full, crop, full] {
+            let expected = reference.analyze(&image, bounds);
+            let actual = analyzer.analyze(&image, bounds);
+            assert_eq!(actual[zone], expected[zone]);
+            assert!(actual
+                .iter()
+                .enumerate()
+                .all(|(i, lab)| i == zone || *lab == [0.0; 3]));
+        }
+    }
+}
+
+#[test]
+fn crop_change_requires_consecutive_confirmations() {
+    let full = ContentBounds {
+        left: 0,
+        top: 0,
+        right: 160,
+        bottom: 100,
+    };
+    let first = ContentBounds {
+        top: 12,
+        bottom: 88,
+        ..full
+    };
+    let next = ContentBounds {
+        top: 20,
+        bottom: 80,
+        ..full
+    };
+    let mut tracker = BoundsTracker::new(full);
+    for _ in 0..3 {
+        tracker.update(first);
+    }
+    assert_eq!(tracker.update(next), first);
+    assert_eq!(tracker.update(next), first);
+    assert_eq!(tracker.update(full), first);
+    assert_eq!(tracker.update(next), first);
+    assert_eq!(tracker.update(next), first);
+    assert_eq!(tracker.update(next), next);
+    for _ in 0..11 {
+        assert_eq!(tracker.update(full), next);
+    }
+    assert_eq!(tracker.update(full), full);
+}
+
+#[test]
+fn bars_do_not_trim_content_between_coarse_scan_steps() {
+    let image = frame(RgbaImage::from_fn(160, 100, |_, y| {
+        Rgba(if (13..87).contains(&y) {
+            [180, 40, 20, 255]
+        } else {
+            [0, 0, 0, 255]
+        })
+    }));
+    let crop = detect_content_bounds(&image);
+    assert_eq!((crop.top, crop.bottom), (13, 87));
+}
+
+#[test]
+fn a_single_dark_edge_is_not_a_pair_of_black_bars() {
+    let image = frame(RgbaImage::from_fn(160, 360, |_, y| {
+        Rgba(if y < 3 {
+            [0, 0, 0, 255]
+        } else {
+            [100, 100, 100, 255]
+        })
+    }));
+    assert_eq!(detect_content_bounds(&image), ContentBounds::full(&image));
+}
+
+#[test]
+fn percentile_includes_content_at_the_far_end_of_a_scanline() {
+    let image = frame(RgbaImage::from_fn(160, 100, |x, y| {
+        let value = if (12..88).contains(&y) {
+            100
+        } else if x >= 150 {
+            24
+        } else {
+            0
+        };
+        Rgba([value, value, value, 255])
+    }));
+    assert_eq!(detect_content_bounds(&image), ContentBounds::full(&image));
+}

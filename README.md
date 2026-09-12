@@ -17,6 +17,9 @@ LumaSync analyse l’écran en cônes orientés vers son centre et diffuse les c
 - grille fixe de 3 600 échantillons au maximum, indépendante de la résolution ;
 - télémétrie en direct : FPS, temps de traitement et images manquées ;
 - détection du Hue Bridge et création d’une zone Entertainment depuis une pièce existante.
+- mémorisation de l’écran, de la zone et du placement des lampes par pont ;
+- journal de diagnostic local consultable et exportable, avec rotation et masquage des clés ;
+- suivi allégé en arrière-plan et reprise des opérations après une erreur.
 
 ## Matériel et système
 
@@ -52,6 +55,8 @@ Commandes utiles :
 npm run check
 npm run check:size
 npm test
+npm run test:frontend
+npm run test:ui
 npm run build
 npm run tauri build
 ```
@@ -87,6 +92,18 @@ Les fichiers de verrouillage générés Cargo/npm restent intacts et sont exclus
 - les captures restent en mémoire et ne sont jamais enregistrées ;
 - aucune télémétrie distante n’est envoyée ;
 - le pont est contacté uniquement sur le réseau local.
+
+Le bouton **Diagnostic** de la barre supérieure affiche les 200 événements les
+plus récents, leur heure et leur origine. Les erreurs de capture, reconnexions,
+changements de moteur DXGI et échecs de commandes y sont consignés. Le chemin du
+journal apparaît dans cette fenêtre ; son export produit un fichier JSONL.
+L’écriture passe par une file bornée hors de la boucle de capture. Le journal
+courant et sa sauvegarde sont limités à 512 Kio chacun. Les captures et les clés
+Hue ne sont pas enregistrées. Les logs restent sur le PC.
+
+`npm run dev` ouvre un aperçu navigateur avec des données simulées. Le pilotage
+réel du pont et la capture d’écran nécessitent l’application Tauri. Les tests
+Playwright utilisent Edge sous Windows et Chromium sur les autres systèmes.
 
 Les contenus vidéo protégés par DRM peuvent apparaître noirs dans une capture logicielle.
 

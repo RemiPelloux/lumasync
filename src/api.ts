@@ -1,4 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { reportProblem } from "./diagnostics";
 import type {
   BridgeInfo,
   EntertainmentArea,
@@ -7,6 +8,15 @@ import type {
   StartSyncRequest,
   SyncStatus,
 } from "./types";
+
+async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await tauriInvoke<T>(command, args);
+  } catch (error) {
+    reportProblem(command, "Échec de la commande native.");
+    throw error;
+  }
+}
 
 const tauriApi = {
   discoverBridges: () => invoke<BridgeInfo[]>("discover_bridges"),
@@ -28,6 +38,7 @@ const tauriApi = {
 
 let previewRunning = false;
 let previewTick = 0;
+let previewFps = 45;
 const previewHasNoArea = new URLSearchParams(window.location.search).has("empty");
 const previewBridge: BridgeInfo = {
   id: "PREVIEW001",
@@ -39,10 +50,10 @@ const previewArea: EntertainmentArea = {
   id: "57b456d5-fb35-4f84-b658-32d8347419de",
   name: "Bureau",
   channels: [
-    { channelId: 0, serviceId: "play-top-left", name: "Hue Play haut gauche", position: [-1, 0, 1] },
-    { channelId: 1, serviceId: "play-top-right", name: "Hue Play haut droit", position: [1, 0, 1] },
-    { channelId: 2, serviceId: "color-bottom-left", name: "Hue Color bas gauche", position: [-1, 0, -1] },
-    { channelId: 3, serviceId: "color-bottom-right", name: "Hue Color bas droit", position: [1, 0, -1] },
+    { channelId: 0, serviceId: "play-top-left", name: "Hue Play haut gauche", position: [-1, 1, 0] },
+    { channelId: 1, serviceId: "play-top-right", name: "Hue Play haut droit", position: [1, 1, 0] },
+    { channelId: 2, serviceId: "color-bottom-left", name: "Hue Color bas gauche", position: [-1, -1, 0] },
+    { channelId: 3, serviceId: "color-bottom-right", name: "Hue Color bas droit", position: [1, -1, 0] },
   ],
 };
 const previewRoom: HueRoom = { id: "2", name: "Chambre", lightCount: 4 };
@@ -55,7 +66,7 @@ const previewApi = {
   getHueRooms: async () => [previewRoom],
   createEntertainmentFromRoom: async () => ({ ...previewArea, name: "Chambre Ambilight" }),
   getMonitors: async () => [{ index: 0, name: "Écran principal", width: 1920, height: 1080, primary: true }],
-  startSync: async () => { previewRunning = true; },
+  startSync: async (request: StartSyncRequest) => { previewRunning = true; previewFps = request.fps; },
   stopSync: async () => { previewRunning = false; },
   getSyncStatus: async (): Promise<SyncStatus> => {
     previewTick += 0.16;
@@ -64,7 +75,7 @@ const previewApi = {
       running: previewRunning,
       phase: previewRunning ? "running" : "idle",
       message: previewRunning ? "Éclairage synchronisé" : "Prêt à démarrer",
-      measuredFps: previewRunning ? 29.8 : 0,
+      measuredFps: previewRunning ? previewFps - 0.2 : 0,
       frameTimeMs: previewRunning ? 7.4 : 0,
       droppedFrames: 0,
       blackBarsDetected: previewRunning && Math.sin(previewTick) > 0.25,

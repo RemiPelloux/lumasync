@@ -61,6 +61,10 @@ pub(super) fn from_lab(lab: Vector) -> Vector {
 
 /// Reduce chroma at fixed perceptual lightness/hue instead of clipping RGB.
 pub(super) fn gamut_map(lab: Vector) -> Vector {
+    // Temporal extrapolation can briefly push lightness outside Oklab's
+    // displayable range. Clamp it before gamut checks so the chroma search
+    // preserves a valid perceptual lightness instead of relying on RGB clips.
+    let lab = [lab[0].clamp(0.0, 1.0), lab[1], lab[2]];
     let rgb = from_lab(lab);
     if in_gamut(rgb) {
         return rgb.map(|v| v.clamp(0.0, 1.0));
@@ -74,7 +78,7 @@ pub(super) fn gamut_map(lab: Vector) -> Vector {
             high = scale;
         }
     }
-    from_lab([lab[0].clamp(0.0, 1.0), lab[1] * low, lab[2] * low]).map(|v| v.clamp(0.0, 1.0))
+    from_lab([lab[0], lab[1] * low, lab[2] * low]).map(|v| v.clamp(0.0, 1.0))
 }
 
 fn in_gamut(rgb: Vector) -> bool {

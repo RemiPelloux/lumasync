@@ -7,12 +7,10 @@
   flex-direction: column;
   padding: 12px;
   overflow: hidden;
-  border: 1px solid rgb(56 65 105 / 66%);
-  border-radius: 16px;
-  background:
-    linear-gradient(rgb(13 18 37 / 96%), rgb(9 13 29 / 96%)),
-    repeating-linear-gradient(90deg, transparent 0 36px, rgb(255 255 255 / 2%) 36px 37px);
-  box-shadow: var(--shadow-scene);
+  border: 0;
+  border-left: 1px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-surface);
   contain: layout paint;
 }
 
@@ -69,7 +67,7 @@
 .telemetry small {
   color: var(--color-text-muted);
   font-size: 8px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -154,7 +152,7 @@
   color: var(--color-primary-strong);
   font-family: var(--font-utility);
   font-size: 8px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -162,9 +160,9 @@
   position: relative;
   z-index: 2;
   font-family: var(--font-display);
-  font-size: clamp(15px, 1.8vw, 22px);
+  font-size: 20px;
   font-weight: 520;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .monitor-screen small {
@@ -172,17 +170,6 @@
   z-index: 2;
   color: var(--color-text-muted);
   font-size: 10px;
-}
-
-.screen-orbit {
-  position: absolute;
-  width: 52%;
-  aspect-ratio: 1;
-  border: 1px solid rgb(156 140 255 / 20%);
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 38px rgb(156 140 255 / 3%),
-    0 0 0 82px rgb(142 219 255 / 2%);
 }
 
 .monitor-led {

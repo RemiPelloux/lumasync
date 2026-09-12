@@ -1,4 +1,4 @@
-import { Check, House, Lightbulb, Plus, Radio } from "lucide-react";
+import { Check, House, Lightbulb, Plus, Radio, RefreshCw } from "lucide-react";
 import { Button, Panel } from "../components";
 import type { Studio } from "../hooks/useStudio";
 
@@ -6,9 +6,10 @@ export function LightsPanel({ studio }: { studio: Studio }) {
   const { areas, areaId, rooms, roomId, setRoomId, assignments, mappingMode, zoneOptions, loading, activeArea, activeRoom, chooseArea, createAreaFromRoom, assignZone, applyMappingMode, isRunning } = studio;
   return (
     <Panel>
-      <div className="panel__heading panel__heading--compact">
+      <div className="panel__heading panel__heading--compact panel__heading--action">
         <span className="icon-box"><Lightbulb size={19} /></span>
         <div><span className="step-label">Zone Hue</span><h2>Lumières</h2></div>
+        <Button variant="ghost" className="icon-button" icon={<RefreshCw size={16} />} aria-label="Actualiser les lampes et les écrans" title="Actualiser les lampes et les écrans" disabled={isRunning || studio.isBusy} busy={loading === "data"} onClick={() => void studio.loadBridgeData()} />
       </div>
 
       <div className="choice-stack">
@@ -19,13 +20,15 @@ export function LightsPanel({ studio }: { studio: Studio }) {
             className={`choice-row ${area.id === areaId ? "choice-row--selected" : ""}`}
             onClick={() => chooseArea(area)}
             aria-pressed={area.id === areaId}
-            disabled={isRunning}
+            disabled={isRunning || studio.isBusy}
           >
             <span><strong>{area.name}</strong><small>{area.channels.length} canaux</small></span>
             {area.id === areaId && <Radio size={17} aria-hidden="true" />}
           </button>
         ))}
       </div>
+
+      {areas.length === 0 && rooms.length === 0 && <p className="empty-state">{studio.isBusy && !studio.dataLoaded ? "Recherche des lampes…" : "Aucune zone disponible."}</p>}
 
       {areas.length === 0 && rooms.length > 0 && (
         <div className="room-recovery">
@@ -65,7 +68,9 @@ export function LightsPanel({ studio }: { studio: Studio }) {
       )}
 
       {activeArea && (
-        <div className="mapping-list">
+        <details className="mapping-list">
+          <summary>Position des lumières <span>{assignments.length} canaux</span></summary>
+          <div className="mapping-content">
           <div className="mapping-mode">
             <div className="cadence-control">
               <span>Disposition</span>
@@ -87,11 +92,6 @@ export function LightsPanel({ studio }: { studio: Studio }) {
                 ))}
               </div>
             </div>
-            <p className="mapping-mode__hint">
-              {mappingMode === "corners"
-                ? "Chaque lumière regarde vers l’intérieur depuis son coin (HG, HD, BG, BD)."
-                : "Chaque lumière analyse un cône depuis son côté (G, D, H, B)."}
-            </p>
           </div>
           {activeArea.channels.map((channel) => {
             const current = assignments.find((item) => item.channelId === channel.channelId)?.zone;
@@ -100,6 +100,7 @@ export function LightsPanel({ studio }: { studio: Studio }) {
                 <span className="light-name">{channel.name}</span>
                 <div
                   className={`zone-picker ${mappingMode === "corners" ? "zone-picker--corners" : ""}`}
+                  role="group"
                   aria-label={`Position de ${channel.name}`}
                 >
                   {zoneOptions.map((zone) => (
@@ -109,6 +110,7 @@ export function LightsPanel({ studio }: { studio: Studio }) {
                       className={current === zone.id ? "zone-button zone-button--active" : "zone-button"}
                       onClick={() => assignZone(channel.channelId, zone.id)}
                       aria-label={zone.label}
+                      title={zone.label}
                       aria-pressed={current === zone.id}
                       disabled={isRunning}
                     >{zone.short}</button>
@@ -117,7 +119,8 @@ export function LightsPanel({ studio }: { studio: Studio }) {
               </div>
             );
           })}
-        </div>
+          </div>
+        </details>
       )}
     </Panel>
   );

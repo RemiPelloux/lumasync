@@ -80,8 +80,10 @@ pub async fn create_entertainment_from_room(
         "Le pont n’a pas confirmé la création de la zone Entertainment.".to_owned()
     })?;
     let id_v1 = format!("/groups/{group_id}");
-    for _ in 0..8 {
-        let areas = entertainment_areas(credentials).await?;
+    // Publication is eventually consistent. Poll the small configuration resource,
+    // then resolve names and channels once after the id is visible.
+    let mut configuration_id = None;
+    for attempt in 0..8 {
         let configurations = request(
             credentials,
             Method::GET,
@@ -89,16 +91,24 @@ pub async fn create_entertainment_from_room(
             None,
         )
         .await?;
-        if let Some(configuration_id) = data(&configurations).iter().find_map(|configuration| {
+        configuration_id = data(&configurations).iter().find_map(|configuration| {
             (configuration.get("id_v1").and_then(Value::as_str) == Some(id_v1.as_str()))
                 .then(|| configuration.get("id").and_then(Value::as_str))
                 .flatten()
-        }) {
-            if let Some(area) = areas.into_iter().find(|area| area.id == configuration_id) {
-                return Ok(area);
-            }
+                .map(str::to_owned)
+        });
+        if configuration_id.is_some() {
+            break;
         }
-        tokio::time::sleep(Duration::from_millis(350)).await;
+        if attempt < 7 {
+            tokio::time::sleep(Duration::from_millis(350)).await;
+        }
+    }
+    if let Some(configuration_id) = configuration_id {
+        let areas = entertainment_areas(credentials).await?;
+        if let Some(area) = areas.into_iter().find(|area| area.id == configuration_id) {
+            return Ok(area);
+        }
     }
 
     Err("La zone a été créée, mais le pont ne l’a pas encore publiée. Rechargez dans quelques secondes.".to_owned())
@@ -112,18 +122,18 @@ fn entertainment_name(room_name: &str) -> String {
 }
 
 fn positions_for_lights(count: usize) -> impl Iterator<Item = [f32; 3]> {
-    // First four slots are screen corners (top-left, top-right, bottom-left, bottom-right).
+    // Hue's screen plane is x/y; z is depth. First four slots are screen corners.
     const POSITIONS: [[f32; 3]; 10] = [
-        [-1.0, 1.0, 1.0],
-        [1.0, 1.0, 1.0],
-        [-1.0, 1.0, -1.0],
-        [1.0, 1.0, -1.0],
         [-1.0, 1.0, 0.0],
         [1.0, 1.0, 0.0],
-        [0.0, 1.0, 1.0],
-        [0.0, 1.0, -1.0],
-        [-0.5, 1.0, 1.0],
-        [0.5, 1.0, 1.0],
+        [-1.0, -1.0, 0.0],
+        [1.0, -1.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [-0.5, 1.0, 0.0],
+        [0.5, 1.0, 0.0],
     ];
     POSITIONS.into_iter().take(count)
 }
@@ -143,9 +153,9 @@ mod tests {
     fn four_light_positions_cover_screen_corners() {
         let positions = positions_for_lights(4).collect::<Vec<_>>();
         assert_eq!(positions.len(), 4);
-        assert_eq!(positions[0], [-1.0, 1.0, 1.0]);
-        assert_eq!(positions[1], [1.0, 1.0, 1.0]);
-        assert_eq!(positions[2], [-1.0, 1.0, -1.0]);
-        assert_eq!(positions[3], [1.0, 1.0, -1.0]);
+        assert_eq!(positions[0], [-1.0, 1.0, 0.0]);
+        assert_eq!(positions[1], [1.0, 1.0, 0.0]);
+        assert_eq!(positions[2], [-1.0, -1.0, 0.0]);
+        assert_eq!(positions[3], [1.0, -1.0, 0.0]);
     }
 }

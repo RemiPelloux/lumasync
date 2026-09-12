@@ -1,4 +1,7 @@
 use super::frame::ScreenFrame;
+const LINE_SAMPLES: usize = 96;
+const CROP_CONFIRMATIONS: u8 = 3;
+const FULL_CONFIRMATIONS: u8 = 12;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct ContentBounds {
@@ -34,8 +37,9 @@ impl BoundsTracker {
             return self.stable;
         }
         if detected == self.full {
+            self.candidate_hits = 0;
             self.full_misses = self.full_misses.saturating_add(1);
-            if self.full_misses >= 12 {
+            if self.full_misses >= FULL_CONFIRMATIONS {
                 self.stable = self.full;
                 self.candidate = self.full;
                 self.candidate_hits = 0;
@@ -50,7 +54,7 @@ impl BoundsTracker {
             self.candidate = detected;
             self.candidate_hits = 1;
         }
-        if self.candidate_hits >= 3 {
+        if self.candidate_hits >= CROP_CONFIRMATIONS {
             self.stable = self.candidate;
             self.candidate_hits = 0;
         }
@@ -101,7 +105,7 @@ pub(super) fn detect_content_bounds(image: &ScreenFrame) -> ContentBounds {
 
 fn symmetric_bars(first: u32, second: u32) -> bool {
     let largest = first.max(second);
-    largest >= 3 && first.abs_diff(second) <= (largest / 3).max(3)
+    first.min(second) >= 3 && first.abs_diff(second) <= (largest / 3).max(3)
 }
 
 #[derive(Clone, Copy)]
@@ -121,7 +125,9 @@ fn find_content_offset(image: &ScreenFrame, edge: ScanEdge) -> u32 {
     let limit = perpendicular / 4;
     for offset in (0..limit).step_by(step as usize) {
         if line_has_content(image, edge, offset) {
-            return offset;
+            return (offset.saturating_sub(step - 1)..offset)
+                .find(|candidate| line_has_content(image, edge, *candidate))
+                .unwrap_or(offset);
         }
     }
     0
@@ -132,15 +138,14 @@ fn line_has_content(image: &ScreenFrame, edge: ScanEdge, offset: u32) -> bool {
         ScanEdge::Top | ScanEdge::Bottom => image.width,
         ScanEdge::Left | ScanEdge::Right => image.height,
     };
-    let step = (along / 96).max(1);
     let mut sum = 0.0f32;
     let mut sum_sq = 0.0f32;
     let mut chroma_sum = 0.0f32;
-    let mut samples = 0u32;
-    let mut luminances = [0u8; 96];
-    let mut luma_count = 0usize;
+    let samples = (along as usize).min(LINE_SAMPLES);
+    let mut luminances = [0u8; LINE_SAMPLES];
 
-    for position in (0..along).step_by(step as usize) {
+    for (index, value) in luminances[..samples].iter_mut().enumerate() {
+        let position = (index as u64 * u64::from(along - 1) / (samples - 1) as u64) as u32;
         let (x, y) = match edge {
             ScanEdge::Top => (position, offset),
             ScanEdge::Bottom => (position, image.height - 1 - offset),
@@ -153,25 +158,17 @@ fn line_has_content(image: &ScreenFrame, edge: ScanEdge, offset: u32) -> bool {
         sum += luma;
         sum_sq += luma * luma;
         chroma_sum += chroma;
-        if luma_count < luminances.len() {
-            luminances[luma_count] = luma.round().clamp(0.0, 255.0) as u8;
-            luma_count += 1;
-        }
-        samples += 1;
+        *value = luma.round().clamp(0.0, 255.0) as u8;
     }
 
     let n = samples.max(1) as f32;
     let mean = sum / n;
     let variance = (sum_sq / n - mean * mean).max(0.0);
     let mean_chroma = chroma_sum / n;
-    // Approximate P95 from the sampled luminances.
-    let sorted = &mut luminances[..luma_count];
-    sorted.sort_unstable();
-    let p95 = if sorted.is_empty() {
-        0.0
-    } else {
-        sorted[((sorted.len() as f32 * 0.95).floor() as usize).min(sorted.len() - 1)] as f32
-    };
+    // Every statistic uses the same evenly spread samples, including the far edge.
+    let percentile = samples * 95 / 100;
+    let (_, p95, _) = luminances[..samples].select_nth_unstable(percentile);
+    let p95 = *p95 as f32;
 
     // True letterbox: near-black, flat, low chroma. Dark scenes have variance/P95.
     let looks_like_bar = mean < 6.5 && variance < 18.0 && p95 < 14.0 && mean_chroma < 8.0;

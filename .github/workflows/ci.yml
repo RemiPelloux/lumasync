@@ -35,6 +35,11 @@ jobs:
           npm run check:size
           npm run build
 
+      - name: Test frontend state and browser workflows
+        run: |
+          npm run test:frontend
+          npm run test:ui
+
       - name: Test Rust core
         run: cargo test --manifest-path src-tauri/Cargo.toml
 

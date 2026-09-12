@@ -39,6 +39,15 @@ fn hue_wrap_is_continuous() {
 }
 
 #[test]
+fn gamut_mapping_clamps_extrapolated_lightness() {
+    for lightness in [-0.2, 1.2] {
+        let rgb = gamut_map([lightness, 0.2, -0.1]);
+        assert!(rgb.iter().all(|value| (0.0..=1.0).contains(value)));
+        assert!((0.0..=1.0).contains(&to_lab(rgb)[0]));
+    }
+}
+
+#[test]
 fn small_white_overlays_are_suppressed_but_white_scenes_remain_white() {
     let blue = linear([10, 40, 180]);
     let white = [1.0; 3];
@@ -59,6 +68,26 @@ fn overlay_gate_has_no_threshold_jump() {
 fn exponential_response_is_time_based() {
     let a = alpha(8.0, 0.016);
     assert!((1.0 - (1.0 - a).powi(2) - alpha(8.0, 0.032)).abs() < 0.00001);
+}
+
+#[test]
+fn higher_reactivity_reduces_transition_lag() {
+    let dt = (Duration::from_millis(16), 50.0);
+    let mut low = ColorFilter::default();
+    let mut high = ColorFilter::default();
+    low.update([0.3, 0.0, 0.0], (dt.0, 10.0));
+    high.update([0.3, 0.0, 0.0], (dt.0, 10.0));
+    let (mut low_output, mut high_output) = ([0.2, 0.0, 0.0], [0.2, 0.0, 0.0]);
+    for _ in 0..3 {
+        low_output = low.update([0.4, 0.0, 0.0], dt);
+        high_output = high.update([0.4, 0.0, 0.0], (dt.0, 90.0));
+    }
+    let low_error = distance(low_output, [0.4, 0.0, 0.0]);
+    let high_error = distance(high_output, [0.4, 0.0, 0.0]);
+    assert!(
+        high_error < low_error * 0.8,
+        "low={low_error} high={high_error}"
+    );
 }
 
 #[test]

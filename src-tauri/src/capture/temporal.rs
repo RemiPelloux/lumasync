@@ -48,7 +48,11 @@ impl ColorFilter {
         self.velocity = mix(self.velocity, observation, alpha(DERIVATIVE_CUTOFF, dt));
         let speed = dot(self.velocity, self.velocity).sqrt();
         let response = (reactivity / 100.0).clamp(0.1, 1.0);
-        let cutoff = BASE_CUTOFF + RESPONSE_CUTOFF * response.powi(2) + speed * SPEED_GAIN;
+        // Keep the reactivity control linear so the middle of the range is
+        // responsive enough for video without making the low end unstable.
+        // The previous squared curve kept 50% reactivity close to the base
+        // cutoff, making transitions feel noticeably delayed.
+        let cutoff = BASE_CUTOFF + RESPONSE_CUTOFF * response + speed * SPEED_GAIN;
         let predicted = predict(target, self.velocity, coherent);
         self.value = mix(self.value, predicted, alpha(cutoff, dt));
         // Stable targets still converge. The old held-target early return froze them.

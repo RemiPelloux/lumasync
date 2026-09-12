@@ -54,8 +54,13 @@ et reconstruits seulement lorsque le cadre utile change.
 
 Les bandes noires sont recherchées au plus toutes les 50 ms sur les images fraîches.
 La décision utilise luminance, variance, chroma et percentile 95, avec confirmation
-temporelle (trois détections pour recadrer, douze pour retrouver le cadre entier).
+temporelle (trois détections consécutives pour recadrer, douze pour retrouver le cadre entier).
 Une scène entièrement noire ne devient pas un rectangle vide.
+
+Les 96 positions par ligne sont réparties jusqu’au bord opposé ; toutes les
+statistiques utilisent les mêmes points. Le percentile est sélectionné sans
+trier entièrement la ligne. La limite détectée par le balayage grossier est
+ensuite affinée au pixel. Un bord noir isolé ne suffit pas à recadrer l’image.
 
 ## Spectre perceptuel et couleur
 
@@ -77,6 +82,11 @@ Une scène entièrement noire ne devient pas un rectangle vide.
 Les conversions sont effectuées une fois par position, les zones une fois par image
 et les lampes regroupées dans une seule trame. Les noms Hue sont obtenus par
 collections en parallèle, sans requête par lampe ; le client HTTP partage son pool.
+
+Les observations de couleurs successives identiques sont réutilisées exactement,
+y compris leurs moments Oklab et les classes de teinte. Les pixels sans contribution
+à une zone active sont retirés du plan. Ces optimisations ne réduisent pas le budget
+de qualité : une régression compare les sorties à une accumulation indépendante.
 
 ## Transitions et anticipation
 
@@ -107,6 +117,8 @@ Tests reproductibles :
 ```powershell
 npm run check:size
 npm run type-check
+npm run test:frontend
+npm run test:ui
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 npm run build

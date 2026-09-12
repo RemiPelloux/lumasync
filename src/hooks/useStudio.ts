@@ -1,201 +1,183 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { SetStateAction } from "react";
 import { hueApi } from "../api";
-import { buildAssignments, loadMappingMode, saveMappingMode, zonesFor } from "../mapping";
-import { loadSettings, profileFor, SETTINGS_KEY, INITIAL_STATUS, PROFILES, errorMessage } from "../config/profiles";
+import { loadMappingMode, saveMappingMode, zonesFor } from "../mapping";
+import { profileFor, INITIAL_STATUS, PROFILES, normalizeSettings } from "../config/profiles";
 import type { RenderProfile } from "../config/profiles";
+import { bridgeKey, preferredBridge, rememberAssignments, rememberBridge, rememberSelection, restoreAssignments, restoreSelection } from "../config/session";
 import type { BridgeInfo, ChannelAssignment, EntertainmentArea, HueRoom, MappingMode, MonitorInfo, StartSyncRequest, SyncSettings, Zone } from "../types";
 import { useSyncStatus } from "./useSyncStatus";
+import { useSettings } from "./useSettings";
+import { useStudioAction } from "./useStudioAction";
 
 export function useStudio() {
   const [bridges, setBridges] = useState<BridgeInfo[]>([]);
-  const [bridge, setBridge] = useState<BridgeInfo | null>(null);
+  const [bridge, setSelectedBridge] = useState<BridgeInfo | null>(null);
   const [manualHost, setManualHost] = useState("");
   const [connected, setConnected] = useState(false);
   const [pairingNeeded, setPairingNeeded] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [areas, setAreas] = useState<EntertainmentArea[]>([]);
   const [areaId, setAreaId] = useState("");
   const [rooms, setRooms] = useState<HueRoom[]>([]);
-  const [roomId, setRoomId] = useState("");
+  const [roomId, changeRoomId] = useState("");
   const [monitors, setMonitors] = useState<MonitorInfo[]>([]);
-  const [monitorIndex, setMonitorIndex] = useState(0);
+  const [monitorIndex, changeMonitorIndex] = useState(0);
   const [assignments, setAssignments] = useState<ChannelAssignment[]>([]);
   const [mappingMode, setMappingMode] = useState(loadMappingMode);
-  const [settings, setSettings] = useState(loadSettings);
-  const zoneOptions = useMemo(() => zonesFor(mappingMode), [mappingMode]);
+  const [settings, changeSettings] = useSettings();
   const [status, setStatus] = useState(INITIAL_STATUS);
-  const [loading, setLoading] = useState<"discover" | "connect" | "pair" | "data" | "create-area" | "start" | "stop" | null>(null);
-  const [error, setError] = useState("");
-
-  const activeArea = useMemo(
-    () => areas.find((area) => area.id === areaId) ?? null,
-    [areas, areaId],
-  );
-  const activeRoom = useMemo(
-    () => rooms.find((room) => room.id === roomId) ?? null,
-    [rooms, roomId],
-  );
+  const { loading, error, setError, busy, run } = useStudioAction();
+  const { statusError, refreshStatus } = useSyncStatus({ connected, paused: loading !== null, setStatus });
+  const zoneOptions = useMemo(() => zonesFor(mappingMode), [mappingMode]);
+  const activeArea = useMemo(() => areas.find((area) => area.id === areaId) ?? null, [areas, areaId]);
+  const activeRoom = useMemo(() => rooms.find((room) => room.id === roomId) ?? null, [rooms, roomId]);
   const activeProfile = useMemo(() => profileFor(settings), [settings]);
+  const isRunning = status.running || ["starting", "reconnecting", "stopping"].includes(status.phase);
+  const ready = connected && dataLoaded && !!activeArea && monitors.some((item) => item.index === monitorIndex)
+    && assignments.length > 0 && assignments.length === activeArea.channels.length;
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    } catch {
-      // Les réglages restent utilisables pour la session si le stockage local est indisponible.
-    }
-  }, [settings]);
-
-  useEffect(() => {
-    saveMappingMode(mappingMode);
-  }, [mappingMode]);
-
-  const discover = useCallback(async () => {
-    setLoading("discover");
-    setError("");
-    try {
-      const found = await hueApi.discoverBridges();
-      setBridges(found);
-      if (found.length === 1) setBridge(found[0]);
-      if (found.length === 0) {
-        setError("Aucun Hue Bridge détecté. Vérifiez qu’il est relié à la même box que ce PC.");
-      }
-    } catch (cause) {
-      setError(`La détection réseau a échoué : ${errorMessage(cause)}`);
-    } finally {
-      setLoading(null);
-    }
-  }, []);
+  const discover = useCallback(() => run("discover", "La détection réseau a échoué", async () => {
+    const found = await hueApi.discoverBridges();
+    setBridges(found);
+    setSelectedBridge((current) => current ?? preferredBridge(found));
+    if (!found.length) setError("Aucun Hue Bridge détecté. Vérifiez qu’il est relié à la même box que ce PC.");
+  }), [run, setError]);
 
   useEffect(() => {
     document.title = "Éclairage écran — LumaSync";
     void discover();
   }, [discover]);
 
-  const loadBridgeData = useCallback(async () => {
-    setLoading("data");
+  const setBridge = (selected: BridgeInfo) => {
+    if (busy.current || isRunning || (bridge && bridgeKey(bridge) === bridgeKey(selected) && bridge.host === selected.host)) return;
+    setSelectedBridge(selected);
+    rememberBridge(selected);
+    setConnected(false);
+    setPairingNeeded(false);
+    setDataLoaded(false);
+    setAreas([]);
+    setRooms([]);
+    setMonitors([]);
+    setAreaId("");
+    setAssignments([]);
+    setStatus(INITIAL_STATUS);
     setError("");
-    try {
-      const [foundAreas, foundMonitors] = await Promise.all([
-        hueApi.getEntertainmentAreas(),
-        hueApi.getMonitors(),
-      ]);
-      const foundRooms = foundAreas.length === 0 ? await hueApi.getHueRooms() : [];
-      setAreas(foundAreas);
-      setRooms(foundRooms);
-      setMonitors(foundMonitors);
-      const primary = foundMonitors.find((item) => item.primary) ?? foundMonitors[0];
-      if (primary) setMonitorIndex(primary.index);
-      if (foundAreas.length > 0) {
-        setAreaId(foundAreas[0].id);
-        setAssignments(buildAssignments(foundAreas[0], mappingMode));
-      } else {
-        setAreaId("");
-        setAssignments([]);
-        const bedroom = foundRooms.find((room) => room.name.localeCompare("Chambre", "fr", { sensitivity: "base" }) === 0);
-        const suggestedRoom = bedroom ?? foundRooms[0];
-        setRoomId(suggestedRoom?.id ?? "");
-        if (!suggestedRoom) {
-          setError("Aucune zone Entertainment ni pièce contenant des lampes n’a été trouvée sur ce pont.");
-        }
-      }
-    } catch (cause) {
-      setError(`Les lampes n’ont pas pu être chargées : ${errorMessage(cause)}`);
-    } finally {
-      setLoading(null);
-    }
-  }, [mappingMode]);
+  };
+
+  const fetchBridgeData = async (selected: BridgeInfo) => {
+    const [foundAreas, foundMonitors] = await Promise.all([hueApi.getEntertainmentAreas(), hueApi.getMonitors()]);
+    const foundRooms = foundAreas.length ? [] : await hueApi.getHueRooms();
+    const restored = restoreSelection(selected, { areas: foundAreas, monitors: foundMonitors });
+    const monitor = foundMonitors.find((item) => item.index === restored.monitorIndex);
+    rememberSelection(selected, { ...(restored.area ? { areaId: restored.area.id } : {}), ...(monitor ? { monitor } : {}) });
+    setAreas(foundAreas);
+    setRooms(foundRooms);
+    setMonitors(foundMonitors);
+    changeMonitorIndex(restored.monitorIndex);
+    setAreaId(restored.area?.id ?? "");
+    setAssignments(restored.area ? restoreAssignments(selected, restored.area, mappingMode) : []);
+    const bedroom = foundRooms.find((room) => room.name.localeCompare("Chambre", "fr", { sensitivity: "base" }) === 0);
+    changeRoomId((bedroom ?? foundRooms[0])?.id ?? "");
+    setDataLoaded(true);
+    if (!foundAreas.length && !foundRooms.length) setError("Aucune zone Entertainment ni pièce contenant des lampes n’a été trouvée sur ce pont.");
+    else if (!foundMonitors.length) setError("Aucun écran disponible. Rebranchez un moniteur puis actualisez les sources.");
+  };
+
+  const loadBridgeData = async () => {
+    if (!bridge || !connected || isRunning) return;
+    await run("data", "Les sources n’ont pas pu être chargées", async () => {
+      setDataLoaded(false);
+      await fetchBridgeData(bridge);
+    });
+  };
 
   const connect = async () => {
-    if (!bridge) return;
-    setLoading("connect");
-    setError("");
-    try {
+    if (!bridge || isRunning) return;
+    await run("connect", "Connexion impossible", async () => {
       const restored = await hueApi.restoreBridge(bridge);
-      if (!restored) {
-        setPairingNeeded(true);
-        return;
-      }
-      setConnected(true);
-      setPairingNeeded(false);
-      await loadBridgeData();
-    } catch (cause) {
-      setError(`Connexion impossible : ${errorMessage(cause)}`);
-    } finally {
-      setLoading(null);
-    }
+      setPairingNeeded(!restored);
+      setConnected(restored);
+      if (!restored) return;
+      rememberBridge(bridge);
+      await fetchBridgeData(bridge);
+    });
   };
 
   const useManualBridge = () => {
+    if (busy.current || isRunning) return;
     const segments = manualHost.trim().split(".");
-    const valid = segments.length === 4 && segments.every((segment) => {
-      if (!/^\d{1,3}$/.test(segment)) return false;
-      const value = Number(segment);
-      return value >= 0 && value <= 255;
-    });
+    const valid = segments.length === 4 && segments.every((segment) => /^\d{1,3}$/.test(segment) && Number(segment) <= 255);
     if (!valid) {
       setError("Entrez une adresse IPv4 valide, par exemple 192.168.1.42.");
       return;
     }
-    const manualBridge: BridgeInfo = {
-      id: "",
-      host: manualHost.trim(),
-      name: "Hue Bridge (adresse manuelle)",
-      port: 443,
-    };
-    setBridges((current) => [manualBridge, ...current.filter((item) => item.host !== manualBridge.host)]);
+    const host = segments.map(Number).join(".");
+    const manualBridge = bridges.find((item) => item.host === host)
+      ?? { id: "", host, name: "Hue Bridge (adresse manuelle)", port: 443 };
+    setBridges((current) => [manualBridge, ...current.filter((item) => item.host !== host)]);
     setBridge(manualBridge);
     setError("");
   };
 
   const pair = async () => {
-    if (!bridge) return;
-    setLoading("pair");
-    setError("");
-    try {
+    if (!bridge || !pairingNeeded || isRunning) return;
+    await run("pair", "Association impossible", async () => {
       await hueApi.pairBridge(bridge);
       setConnected(true);
       setPairingNeeded(false);
-      await loadBridgeData();
-    } catch (cause) {
-      setError(`Association impossible : ${errorMessage(cause)}`);
-    } finally {
-      setLoading(null);
-    }
+      rememberBridge(bridge);
+      await fetchBridgeData(bridge);
+    });
   };
 
-  useSyncStatus({ connected, status, setStatus });
-
   const chooseArea = (area: EntertainmentArea) => {
+    if (!bridge || busy.current || isRunning || !areas.some((item) => item.id === area.id)) return;
     setAreaId(area.id);
-    setAssignments(buildAssignments(area, mappingMode));
+    setAssignments(restoreAssignments(bridge, area, mappingMode));
+    rememberSelection(bridge, { areaId: area.id });
   };
 
   const createAreaFromRoom = async () => {
-    if (!roomId) return;
-    setLoading("create-area");
-    setError("");
-    try {
+    if (!bridge || !connected || !activeRoom || isRunning) return;
+    await run("create-area", "La zone n’a pas pu être préparée", async () => {
       const area = await hueApi.createEntertainmentFromRoom(roomId);
-      setAreas([area]);
+      setAreas((current) => [...current.filter((item) => item.id !== area.id), area]);
       setAreaId(area.id);
-      setAssignments(buildAssignments(area, mappingMode));
-    } catch (cause) {
-      setError(`La zone n’a pas pu être préparée : ${errorMessage(cause)}`);
-    } finally {
-      setLoading(null);
-    }
+      setAssignments(restoreAssignments(bridge, area, mappingMode));
+      rememberSelection(bridge, { areaId: area.id });
+    });
+  };
+
+  const setRoomId = (id: string) => {
+    if (!busy.current && !isRunning && rooms.some((room) => room.id === id)) changeRoomId(id);
+  };
+
+  const setMonitorIndex = (index: number) => {
+    if (!bridge || busy.current || isRunning) return;
+    const monitor = monitors.find((item) => item.index === index);
+    if (!monitor) return;
+    changeMonitorIndex(index);
+    rememberSelection(bridge, { monitor });
   };
 
   const assignZone = (channelId: number, zone: Zone) => {
-    setAssignments((current) =>
-      current.map((assignment) =>
-        assignment.channelId === channelId ? { ...assignment, zone } : assignment,
-      ),
-    );
+    if (!bridge || !activeArea || busy.current || isRunning || !zoneOptions.some((item) => item.id === zone)) return;
+    const next = assignments.map((assignment) => assignment.channelId === channelId ? { ...assignment, zone } : assignment);
+    setAssignments(next);
+    rememberAssignments(bridge, activeArea, { mode: mappingMode, assignments: next });
   };
 
   const applyMappingMode = (mode: MappingMode) => {
+    if (busy.current || isRunning || (mode !== "edges" && mode !== "corners")) return;
     setMappingMode(mode);
-    if (activeArea) setAssignments(buildAssignments(activeArea, mode));
+    saveMappingMode(mode);
+    if (bridge && activeArea) setAssignments(restoreAssignments(bridge, activeArea, mode));
+  };
+
+  const setSettings = (next: SetStateAction<SyncSettings>) => {
+    if (busy.current || isRunning) return;
+    changeSettings((current) => normalizeSettings(typeof next === "function" ? next(current) : next));
   };
 
   const applyProfile = (profile: Exclude<RenderProfile, "custom">) => {
@@ -208,64 +190,47 @@ export function useStudio() {
   }
 
   const start = async () => {
-    if (!activeArea) return;
-    setLoading("start");
-    setError("");
-    const request: StartSyncRequest = {
-      areaId: activeArea.id,
-      monitorIndex,
-      assignments,
-      ...settings,
-    };
-    try {
+    if (!ready || !activeArea || isRunning) return;
+    const request: StartSyncRequest = { areaId: activeArea.id, monitorIndex, assignments, ...settings };
+    await run("start", "L’éclairage n’a pas démarré", async () => {
       setStatus((current) => ({ ...current, phase: "starting", message: "Ouverture du flux Hue…" }));
-      await hueApi.startSync(request);
-      setStatus(await hueApi.getSyncStatus());
-    } catch (cause) {
-      setStatus((current) => ({ ...current, running: false, phase: "error", message: "Démarrage interrompu" }));
-      setError(`L’éclairage n’a pas démarré : ${errorMessage(cause)}`);
-    } finally {
-      setLoading(null);
-    }
+      try {
+        await hueApi.startSync(request);
+        setStatus((current) => ({ ...current, running: true, phase: "running", message: "Éclairage synchronisé" }));
+      } catch (cause) {
+        setStatus((current) => ({ ...current, running: false, phase: "error", message: "Démarrage interrompu" }));
+        throw cause;
+      }
+    });
   };
 
   const stop = async () => {
-    setLoading("stop");
-    setError("");
-    try {
+    if (!connected) return;
+    await run("stop", "L’arrêt du flux a rencontré un problème", async () => {
       setStatus((current) => ({ ...current, phase: "stopping", message: "Arrêt du flux Hue…" }));
-      await hueApi.stopSync();
-      setStatus(await hueApi.getSyncStatus());
-    } catch (cause) {
-      setError(`L’arrêt du flux a rencontré un problème : ${errorMessage(cause)}`);
-    } finally {
-      setLoading(null);
-    }
+      try {
+        await hueApi.stopSync();
+        setStatus({ ...INITIAL_STATUS, message: "Prêt à démarrer" });
+      } catch (cause) {
+        setStatus((current) => ({ ...current, phase: "error", message: "Arrêt non confirmé" }));
+        throw cause;
+      }
+    });
   };
 
   const colorByZone = useMemo(() => {
     const map = new Map<Zone, string>();
-    for (const assignment of assignments) {
-      map.set(assignment.zone, status.colors[String(assignment.channelId)] ?? "#343B63");
-    }
+    for (const assignment of assignments) map.set(assignment.zone, status.colors[String(assignment.channelId)] ?? "#343B63");
     return map;
   }, [assignments, status.colors]);
-
   const colorForZone = (zone: Zone) => colorByZone.get(zone) ?? "#242A49";
 
-  const isRunning = status.running || ["starting", "reconnecting", "stopping"].includes(status.phase);
-  const ready = connected && activeArea && monitors.length > 0 && assignments.length > 0;
-
   return {
-    bridges, bridge, setBridge, manualHost, setManualHost,
-    connected, pairingNeeded, areas, areaId, rooms,
-    roomId, setRoomId, monitors, monitorIndex, setMonitorIndex,
-    assignments, mappingMode, settings, setSettings, zoneOptions,
-    status, loading, error, activeArea, activeRoom,
-    activeProfile, discover, connect, useManualBridge, pair,
-    chooseArea, createAreaFromRoom, assignZone, applyMappingMode, applyProfile,
-    updateSetting, start, stop, colorForZone, isRunning,
-    ready,
+    bridges, bridge, setBridge, manualHost, setManualHost, connected, pairingNeeded, areas, areaId, rooms,
+    roomId, setRoomId, monitors, monitorIndex, setMonitorIndex, assignments, mappingMode, settings, setSettings, zoneOptions,
+    status, statusError, refreshStatus, loading, error, dataLoaded, loadBridgeData, activeArea, activeRoom,
+    activeProfile, discover, connect, useManualBridge, pair, chooseArea, createAreaFromRoom, assignZone, applyMappingMode,
+    applyProfile, updateSetting, start, stop, colorForZone, isRunning, isBusy: loading !== null, ready,
   };
 }
 export type Studio = ReturnType<typeof useStudio>;

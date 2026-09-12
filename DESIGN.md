@@ -3,14 +3,14 @@ version: alpha
 name: "LumaSync"
 description: "Un pupitre nocturne précis qui transforme les couleurs de l’écran en lumière Hue sans distraire du film ou du jeu."
 colors:
-  canvas: "#070A16"
-  surface: "#0E1327"
-  surface-raised: "#151B34"
-  border: "#2A3151"
-  text: "#F3F5FF"
-  text-muted: "#9AA3C6"
-  primary: "#9C8CFF"
-  primary-strong: "#C4B9FF"
+  canvas: "#101214"
+  surface: "#191C1F"
+  surface-raised: "#25292D"
+  border: "#393F45"
+  text: "#F3F5F6"
+  text-muted: "#A8B0B8"
+  primary: "#72C9BA"
+  primary-strong: "#A5E4D7"
   success: "#66E3B4"
   warning: "#FFCB77"
   danger: "#FF7D91"
@@ -48,7 +48,7 @@ components:
 
 ### Creative North Star
 
-L’interface évoque un pupitre de régie lumière posé dans une pièce sombre : des surfaces bleu-encre, des repères nets et une seule source expressive, le halo vivant autour de l’écran. Ce n’est ni une console de jeu tapageuse ni un tableau de bord d’entreprise.
+L’interface est un pupitre de régie lumière : surfaces charbon neutres, commandes vert menthe, repères nets. Les couleurs vives représentent les sorties Hue et les états d’erreur.
 
 ### Product context and register
 
@@ -81,7 +81,7 @@ La profondeur vient des différences de tons, d’une bordure froide et d’une 
 
 ## Shapes
 
-Les panneaux utilisent 22 px et les contrôles 14 px. Les boutons segmentés et états courts peuvent être en pilule. L’écran garde un rayon plus faible pour rappeler un objet matériel, pas une carte.
+Les sections sont séparées par des lignes, sans cartes flottantes. Les contrôles et la fenêtre de diagnostic utilisent au maximum 8 px de rayon. Les boutons segmentés et états courts peuvent être en pilule. L’écran garde une géométrie 16:9 stable.
 
 ## Components
 
@@ -101,7 +101,7 @@ Les mesures en direct utilisent une réglette stable à quatre cellules. Elles o
 
 ### Forms and overlays
 
-Les réglages sont des curseurs natifs, augmentés de leur valeur et de boutons de choix sémantiques. Les erreurs restent dans le panneau concerné et proposent une relance. Aucun dialogue système du navigateur n’est utilisé.
+Les réglages sont des curseurs natifs, augmentés de leur valeur et de boutons de choix sémantiques. Luminosité, saturation et réactivité sont immédiatement accessibles ; plafond lumineux et portée restent dans « Réglages avancés ». Le placement des lampes se déplie dans « Position des lumières ». Les erreurs du moteur sont visibles au-dessus du contenu, avec accès au journal. Les erreurs de lecture du statut proposent une relance indépendante du flux.
 
 Trois profils nommés — Cinéma, Jeu et Naturel — règlent ensemble la cadence, le lissage, la saturation et la profondeur d’analyse. Toute retouche individuelle produit implicitement un réglage personnalisé sans ajouter un quatrième bouton inactif. La détection des bandes noires est un interrupteur explicite et reste activée par défaut.
 
@@ -119,7 +119,7 @@ Les changements de halo se lissent côté Rust en Oklab avec une coupure adaptat
 
 ### Content and data visualization
 
-Le ton est direct : « Détecter », « Associer », « Démarrer l’éclairage ». Les détails techniques apparaissent seulement lorsqu’ils aident à diagnostiquer la connexion.
+Le ton est direct : « Détecter », « Associer », « Démarrer l’éclairage ». L’aperçu montre les couleurs envoyées par zone ; il ne représente pas les pixels capturés. Le journal s’ouvre dans un dialogue clavier avec fermeture par Échap, filtre des problèmes, actualisation et export JSONL. La typographie garde un espacement des lettres nul et des tailles indépendantes de la largeur de fenêtre.
 
 ## Do's and Don'ts
 

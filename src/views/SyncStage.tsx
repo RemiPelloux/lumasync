@@ -1,16 +1,19 @@
-import { CircleStop, Gauge, Play, Wifi } from "lucide-react";
+import { CircleStop, Gauge, Play, Monitor, PowerOff } from "lucide-react";
 import { Button, StatusDot } from "../components";
 import type { Studio } from "../hooks/useStudio";
 
 export function SyncStage({ studio }: { studio: Studio }) {
   const { connected, settings, zoneOptions, status, loading, activeArea, start, stop, colorForZone, isRunning, ready } = studio;
+  const monitor = studio.monitors.find((item) => item.index === studio.monitorIndex);
+  const phaseLabel = { idle: "En attente", starting: "Démarrage", running: "En direct", reconnecting: "Reconnexion", stopping: "Arrêt en cours", error: "Interrompu" }[status.phase];
+  const idleLabel = status.phase === "error" ? "Synchronisation interrompue" : isRunning ? phaseLabel : !connected ? "Pont à connecter" : !activeArea ? "Zone Hue à sélectionner" : !monitor ? "Écran indisponible" : "Prêt à démarrer";
   return (
     <section className="stage" aria-label="Aperçu de la synchronisation">
       <div className="stage__meta">
         <div><span className="eyebrow">Aperçu en direct</span><h2>{activeArea?.name ?? "Votre installation"}</h2></div>
         <span className={`mode-chip ${status.running ? "mode-chip--active" : ""}`}>
           <StatusDot tone={status.phase === "error" ? "error" : status.phase === "reconnecting" ? "busy" : status.running ? "success" : "idle"} />
-          {status.phase === "reconnecting" ? "Reconnexion" : status.running ? "En direct" : "En attente"}
+          {phaseLabel}
         </span>
       </div>
 
@@ -40,27 +43,31 @@ export function SyncStage({ studio }: { studio: Studio }) {
               {zone.short}
             </span>
           ))}
-          <div className="monitor-screen">
-            <div className="screen-orbit" aria-hidden="true" />
-            <span className="screen-kicker">Capture locale</span>
-            <strong>{status.running ? "La lumière suit votre écran" : connected ? "Prêt pour l’image" : "Connectez votre pont"}</strong>
-            <small>{status.running ? `${status.measuredFps.toFixed(0)} envois par seconde` : "Aucune image ne quitte ce PC"}</small>
+          <div className={`monitor-screen ${status.running ? "monitor-screen--live" : ""}`}>
+            {status.running ? (
+              <div className={`color-preview color-preview--${studio.mappingMode}`} aria-label="Couleurs envoyées aux lumières">
+                {zoneOptions.map((zone) => <div key={zone.id} className={`color-preview__zone color-preview__zone--${zone.id}`} style={{ backgroundColor: colorForZone(zone.id) }}><span>{zone.label}</span></div>)}
+              </div>
+            ) : <><Monitor size={28} className="monitor-idle-icon" aria-hidden="true" /><strong>{idleLabel}</strong><small>{monitor ? `${monitor.width} × ${monitor.height}` : ""}</small></>}
           </div>
           <span className="monitor-led" aria-hidden="true" />
         </div>
       </div>
 
       <div className="stage__footer">
-        <div className="privacy-note"><Wifi size={17} /><span>Flux direct PC → Hue Bridge, sur votre réseau local.</span></div>
+        <div className="privacy-note"><Monitor size={17} /><span>{monitor?.name ?? "Aucun écran sélectionné"}</span></div>
+        <div className="stage__commands">
+        {status.phase === "error" && connected && <Button variant="secondary" icon={<PowerOff size={17} />} busy={loading === "stop"} disabled={studio.isBusy} onClick={() => void stop()}>Réessayer l’arrêt</Button>}
         {isRunning ? (
-          <Button variant="danger" icon={<CircleStop size={19} />} busy={loading === "stop" || status.phase === "stopping"} onClick={() => void stop()}>
+          <Button variant="danger" icon={<CircleStop size={19} />} busy={loading === "stop" || status.phase === "stopping"} disabled={loading === "start" || status.phase === "starting"} onClick={() => void stop()}>
             Arrêter l’éclairage
           </Button>
         ) : (
-          <Button variant="primary" icon={<Play size={19} />} busy={loading === "start" || status.phase === "starting"} disabled={!ready || loading === "data"} onClick={() => void start()}>
+          <Button variant="primary" icon={<Play size={19} />} busy={loading === "start" || status.phase === "starting"} disabled={!ready || studio.isBusy} onClick={() => void start()}>
             Démarrer l’éclairage
           </Button>
         )}
+        </div>
       </div>
     </section>
   );

@@ -17,6 +17,7 @@ const EDGE_SIGMA: f32 = 0.42;
 const CORNER_SIGMA: f32 = 0.27;
 const BASE_REACH: f32 = 0.68;
 const DEPTH_SCALE: f32 = 60.0;
+pub(super) const MIN_WEIGHT: f32 = 0.0001;
 
 pub(super) fn zone_index(zone: Zone) -> usize {
     ZONES.iter().position(|v| *v == zone).unwrap_or(0)
@@ -34,6 +35,16 @@ pub(super) struct ConePlan {
 }
 
 impl ConePlan {
+    pub fn retain_active(&mut self, active: [bool; 8]) {
+        self.points.retain(|point| {
+            point
+                .weights
+                .iter()
+                .zip(active)
+                .any(|(weight, enabled)| enabled && *weight > MIN_WEIGHT)
+        });
+    }
+
     pub fn new(bounds: ContentBounds, depth: f32) -> Self {
         let nx = GRID_WIDTH.min(bounds.width());
         let ny = GRID_HEIGHT.min(bounds.height());

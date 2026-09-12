@@ -108,7 +108,7 @@
   }
 
   .monitor-screen strong {
-    font-size: clamp(14px, 4vw, 18px);
+    font-size: 16px;
   }
 
   .stage__footer {

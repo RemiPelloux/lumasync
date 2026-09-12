@@ -1,12 +1,12 @@
 :root {
-  --color-canvas: #070a16;
-  --color-surface: #0e1327;
-  --color-surface-raised: #151b34;
-  --color-border: #2a3151;
-  --color-text: #f3f5ff;
-  --color-text-muted: #9aa3c6;
-  --color-primary: #9c8cff;
-  --color-primary-strong: #c4b9ff;
+  --color-canvas: #101214;
+  --color-surface: #191c1f;
+  --color-surface-raised: #25292d;
+  --color-border: #393f45;
+  --color-text: #f3f5f6;
+  --color-text-muted: #a8b0b8;
+  --color-primary: #72c9ba;
+  --color-primary-strong: #a5e4d7;
   --color-success: #66e3b4;
   --color-warning: #ffcb77;
   --color-danger: #ff7d91;
@@ -15,8 +15,8 @@
   --font-body: "Segoe UI Variable Text", "Segoe UI", sans-serif;
   --font-utility: "Cascadia Code", Consolas, monospace;
   --radius-sm: 0.5rem;
-  --radius-md: 0.7rem;
-  --radius-lg: 0.95rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.5rem;
   --radius-pill: 999px;
   --shadow-scene: 0 16px 42px rgb(0 0 0 / 38%);
   color: var(--color-text);
@@ -65,9 +65,7 @@ body {
   min-width: 320px;
   min-height: 100%;
   margin: 0;
-  background:
-    radial-gradient(circle at 76% 48%, rgb(43 54 104 / 18%), transparent 42%),
-    var(--color-canvas);
+  background: var(--color-canvas);
 }
 
 button,

@@ -11,6 +11,8 @@ pub(super) struct ScreenCapture {
     pub(super) frame: ScreenFrame,
     #[cfg(windows)]
     native: Option<DesktopCapture>,
+    #[cfg(windows)]
+    using_fallback: bool,
     retry_at: Instant,
 }
 
@@ -21,6 +23,8 @@ impl ScreenCapture {
             frame: ScreenFrame::default(),
             #[cfg(windows)]
             native: None,
+            #[cfg(windows)]
+            using_fallback: false,
             retry_at: Instant::now(),
         }
     }
@@ -44,20 +48,41 @@ impl ScreenCapture {
     fn native_update(&mut self) -> Option<bool> {
         if self.native.is_none() && Instant::now() >= self.retry_at {
             self.retry_at = Instant::now() + CAPTURE_RETRY;
-            self.native = self
-                .monitor
-                .x()
-                .ok()
-                .zip(self.monitor.y().ok())
-                .and_then(|origin| DesktopCapture::new(origin).ok());
+            match self.connect_native() {
+                Ok(capture) => {
+                    crate::diagnostics::info("capture.backend", "DXGI desktop capture enabled.");
+                    self.using_fallback = false;
+                    self.native = Some(capture);
+                }
+                Err(error) => self.log_fallback(&error),
+            }
         }
         match self.native.as_mut()?.update(&mut self.frame) {
             Ok(fresh) => Some(fresh),
-            Err(_) => {
+            Err(error) => {
+                self.log_fallback(&error.to_string());
                 self.native = None;
                 self.retry_at = Instant::now() + CAPTURE_RETRY;
                 None
             }
+        }
+    }
+
+    #[cfg(windows)]
+    fn connect_native(&self) -> Result<DesktopCapture, String> {
+        let x = self.monitor.x().map_err(|error| error.to_string())?;
+        let y = self.monitor.y().map_err(|error| error.to_string())?;
+        DesktopCapture::new((x, y)).map_err(|error| error.to_string())
+    }
+
+    #[cfg(windows)]
+    fn log_fallback(&mut self, error: &str) {
+        if !self.using_fallback {
+            crate::diagnostics::warn(
+                "capture.fallback",
+                &format!("Using compatibility screen capture: {error}"),
+            );
+            self.using_fallback = true;
         }
     }
 }

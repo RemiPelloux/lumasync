@@ -29,19 +29,29 @@ impl Moment {
 pub(super) struct Observation {
     pub rgb: Vector,
     pub lab: Vector,
-    hue: f32,
-    chroma: f32,
+    lab_square: f32,
+    hue_bin: usize,
+    hue_fraction: f32,
 }
 
 impl Observation {
+    #[inline]
     pub fn new(rgb: Vector) -> Self {
         let lab = super::color::to_lab(rgb);
-        let hue = (lab[2].atan2(lab[1]) / std::f32::consts::TAU).rem_euclid(1.0);
+        let chroma_square = lab[1] * lab[1] + lab[2] * lab[2];
+        let (hue_bin, hue_fraction) = if chroma_square >= CHROMA_FLOOR * CHROMA_FLOOR {
+            let hue = (lab[2].atan2(lab[1]) / std::f32::consts::TAU).rem_euclid(1.0);
+            let position = hue * BINS as f32;
+            (position as usize % BINS, position.fract())
+        } else {
+            (BINS, 0.0)
+        };
         Self {
             rgb,
             lab,
-            hue,
-            chroma: lab[1].hypot(lab[2]),
+            lab_square: super::color::dot(lab, lab),
+            hue_bin,
+            hue_fraction,
         }
     }
 }
@@ -69,20 +79,20 @@ impl Default for Spectrum {
 }
 
 impl Spectrum {
+    #[inline]
     pub fn add(&mut self, sample: &Observation, weight: f32) {
         self.all.add(sample.rgb, weight);
         for (sum, v) in self.lab_sum.iter_mut().zip(sample.lab) {
             *sum += v * weight;
         }
-        self.lab_square += super::color::dot(sample.lab, sample.lab) * weight;
-        if sample.chroma < CHROMA_FLOOR {
+        self.lab_square += sample.lab_square * weight;
+        let bin = sample.hue_bin;
+        if bin >= BINS {
             self.neutral.add(sample.rgb, weight);
             return;
         }
+        let fraction = sample.hue_fraction;
         self.colored.add(sample.rgb, weight);
-        let position = sample.hue * BINS as f32;
-        let bin = position.floor() as usize % BINS;
-        let fraction = position.fract();
         self.bins[bin].add(sample.rgb, weight * (1.0 - fraction));
         self.bins[(bin + 1) % BINS].add(sample.rgb, weight * fraction);
     }

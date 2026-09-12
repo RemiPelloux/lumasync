@@ -19,6 +19,7 @@ export function BridgePanel({ studio }: { studio: Studio }) {
             className={`bridge-card ${bridge?.host === item.host ? "bridge-card--selected" : ""}`}
             onClick={() => setBridge(item)}
             aria-pressed={bridge?.host === item.host}
+            disabled={studio.isBusy}
           >
             <Wifi size={18} />
             <span><strong>{item.name || "Hue Bridge"}</strong><small>{item.host}</small></span>
@@ -38,14 +39,13 @@ export function BridgePanel({ studio }: { studio: Studio }) {
             spellCheck={false}
             placeholder="192.168.1.42"
             value={manualHost}
+            disabled={studio.isBusy}
             onChange={(event) => setManualHost(event.currentTarget.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) useManualBridge();
             }}
           />
-          <Button variant="secondary" disabled={!manualHost.trim()} onClick={useManualBridge}>
-            Utiliser
-          </Button>
+          <Button variant="secondary" className="icon-button" icon={<ArrowRight size={18} />} aria-label="Utiliser cette adresse IP" title="Utiliser cette adresse IP" disabled={!manualHost.trim() || studio.isBusy} onClick={useManualBridge} />
         </div>
       </div>
 
@@ -57,15 +57,15 @@ export function BridgePanel({ studio }: { studio: Studio }) {
       )}
 
       <div className="action-row">
-        <Button variant="ghost" icon={<RefreshCw size={18} />} busy={loading === "discover"} onClick={() => void discover()}>
+        <Button variant="ghost" icon={<RefreshCw size={18} />} busy={loading === "discover"} disabled={studio.isBusy} onClick={() => void discover()}>
           Détecter
         </Button>
         {pairingNeeded ? (
-          <Button variant="primary" icon={<Link2 size={18} />} busy={loading === "pair"} onClick={() => void pair()}>
+          <Button variant="primary" icon={<Link2 size={18} />} busy={loading === "pair"} disabled={studio.isBusy} onClick={() => void pair()}>
             Associer le pont
           </Button>
         ) : (
-          <Button variant="primary" icon={<ArrowRight size={18} />} busy={loading === "connect"} disabled={!bridge} onClick={() => void connect()}>
+          <Button variant="primary" icon={<ArrowRight size={18} />} busy={loading === "connect"} disabled={!bridge || studio.isBusy} onClick={() => void connect()}>
             Continuer
           </Button>
         )}

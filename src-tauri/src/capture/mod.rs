@@ -39,18 +39,41 @@ pub fn run_capture(
     stop: Arc<AtomicBool>,
     status: Arc<Mutex<SyncStatus>>,
 ) -> Result<(), String> {
+    if stop.load(Ordering::Acquire) {
+        return Ok(());
+    }
     let monitor = xcap::Monitor::all()
-        .map_err(|error| format!("Écrans indisponibles : {error}"))?
+        .map_err(|error| {
+            let message = format!("Écrans indisponibles : {error}");
+            crate::diagnostics::error("capture.monitor", &message);
+            message
+        })?
         .into_iter()
         .nth(request.monitor_index)
-        .ok_or_else(|| "Le moniteur choisi n’est plus disponible.".to_owned())?;
+        .ok_or_else(|| {
+            let message = "Le moniteur choisi n’est plus disponible.".to_owned();
+            crate::diagnostics::error("capture.monitor", &message);
+            message
+        })?;
     let mut capture = ScreenCapture::new(monitor);
-    capture.update()?;
+    capture.update().inspect_err(|error| {
+        crate::diagnostics::error("capture.initial_frame", error);
+    })?;
+    if stop.load(Ordering::Acquire) {
+        return Ok(());
+    }
     let period = Duration::from_secs_f64(1.0 / request.fps.clamp(10, 60) as f64);
     let transport = Transport::new(credentials, request.area_id.clone())?;
+    if stop.load(Ordering::Acquire) {
+        return Ok(());
+    }
     let mut pipeline = Pipeline::new(request, &capture.frame);
     pipeline.observe(&capture.frame);
     transport::mark_running(&status);
+    crate::diagnostics::info(
+        "capture.running",
+        "Screen analysis and Hue streaming started.",
+    );
     run_loop(
         &mut Worker {
             capture,
@@ -72,7 +95,10 @@ struct Worker {
 
 impl Worker {
     fn tick(&mut self, elapsed: Duration) -> Result<(), String> {
-        if self.capture.update()? {
+        let fresh = self.capture.update().inspect_err(|error| {
+            crate::diagnostics::error("capture.frame", error);
+        })?;
+        if fresh {
             self.pipeline.observe(&self.capture.frame);
         }
         // Even without a new desktop frame, converge toward the latest target.
@@ -92,8 +118,12 @@ fn run_loop(
     while !stop.load(Ordering::Relaxed) {
         let started = Instant::now();
         worker.tick(started.duration_since(previous))?;
+        if stop.load(Ordering::Acquire) {
+            break;
+        }
         previous = started;
-        if worker.transport.send(&worker.pipeline.outgoing).is_err() {
+        if let Err(error) = worker.transport.send(&worker.pipeline.outgoing) {
+            crate::diagnostics::warn("transport.send", &error);
             worker.transport.reconnect(stop, status)?;
             // Discard the old colors after reconnect: capture again next tick.
         }

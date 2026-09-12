@@ -1,5 +1,6 @@
 import { Film, Gamepad2, Leaf } from "lucide-react";
 import type { SyncSettings, SyncStatus } from "../types";
+import { isRecord, readStored } from "./storage";
 
 export const DEFAULT_SETTINGS: SyncSettings = {
   brightness: 74,
@@ -46,43 +47,30 @@ export const PROFILES: Array<{
 export const SETTINGS_KEY = "lumasync.render-settings.v4";
 
 function bounded(value: unknown, fallback: number, min: number, max: number) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? Math.min(max, Math.max(min, numeric)) : fallback;
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
+
+export function normalizeSettings(value: unknown): SyncSettings {
+  const parsed = isRecord(value) ? value : {};
+  return {
+    brightness: bounded(parsed.brightness, DEFAULT_SETTINGS.brightness, 10, 100),
+    saturation: bounded(parsed.saturation, DEFAULT_SETTINGS.saturation, 40, 150),
+    reactivity: bounded(parsed.reactivity, DEFAULT_SETTINGS.reactivity, 10, 100),
+    maxLuminosity: bounded(parsed.maxLuminosity, DEFAULT_SETTINGS.maxLuminosity, 20, 100),
+    edgeDepth: bounded(parsed.edgeDepth, DEFAULT_SETTINGS.edgeDepth, 5, 30),
+    fps: typeof parsed.fps === "number" && [30, 45, 60].includes(parsed.fps) ? parsed.fps : DEFAULT_SETTINGS.fps,
+    blackBarDetection: typeof parsed.blackBarDetection === "boolean" ? parsed.blackBarDetection : true,
+  };
 }
 
 export function loadSettings(): SyncSettings {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(SETTINGS_KEY) ?? "null") as Partial<SyncSettings> | null;
-    if (!parsed) {
-      // Migrate v3 settings if present.
-      const legacy = JSON.parse(window.localStorage.getItem("lumasync.render-settings.v3") ?? "null") as Partial<SyncSettings> | null;
-      if (!legacy) return DEFAULT_SETTINGS;
-      return {
-        brightness: bounded(legacy.brightness, DEFAULT_SETTINGS.brightness, 10, 100),
-        saturation: bounded(legacy.saturation, DEFAULT_SETTINGS.saturation, 40, 150),
-        reactivity: bounded(legacy.reactivity, DEFAULT_SETTINGS.reactivity, 10, 100),
-        maxLuminosity: DEFAULT_SETTINGS.maxLuminosity,
-        edgeDepth: bounded(legacy.edgeDepth, DEFAULT_SETTINGS.edgeDepth, 5, 30),
-        fps: [30, 45, 60].includes(Number(legacy.fps)) ? Number(legacy.fps) : DEFAULT_SETTINGS.fps,
-        blackBarDetection: typeof legacy.blackBarDetection === "boolean" ? legacy.blackBarDetection : true,
-      };
-    }
-    return {
-      brightness: bounded(parsed.brightness, DEFAULT_SETTINGS.brightness, 10, 100),
-      saturation: bounded(parsed.saturation, DEFAULT_SETTINGS.saturation, 40, 150),
-      reactivity: bounded(parsed.reactivity, DEFAULT_SETTINGS.reactivity, 10, 100),
-      maxLuminosity: bounded(parsed.maxLuminosity, DEFAULT_SETTINGS.maxLuminosity, 20, 100),
-      edgeDepth: bounded(parsed.edgeDepth, DEFAULT_SETTINGS.edgeDepth, 5, 30),
-      fps: [30, 45, 60].includes(Number(parsed.fps)) ? Number(parsed.fps) : DEFAULT_SETTINGS.fps,
-      blackBarDetection: typeof parsed.blackBarDetection === "boolean" ? parsed.blackBarDetection : true,
-    };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
+  const stored = readStored(SETTINGS_KEY);
+  return normalizeSettings(isRecord(stored) ? stored : readStored("lumasync.render-settings.v3"));
 }
 
 export function profileFor(settings: SyncSettings): RenderProfile {
-  return PROFILES.find((profile) => JSON.stringify(profile.settings) === JSON.stringify(settings))?.id ?? "custom";
+  const keys = Object.keys(DEFAULT_SETTINGS) as Array<keyof SyncSettings>;
+  return PROFILES.find((profile) => keys.every((key) => profile.settings[key] === settings[key]))?.id ?? "custom";
 }
 
 export const INITIAL_STATUS: SyncStatus = {

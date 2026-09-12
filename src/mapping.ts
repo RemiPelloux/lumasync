@@ -1,4 +1,5 @@
 import type { ChannelAssignment, EntertainmentArea, MappingMode, Zone } from "./types";
+import { recordDiagnostic } from "./diagnostics";
 
 const MAPPING_KEY = "lumasync.mapping-mode.v1";
 
@@ -33,7 +34,8 @@ export function loadMappingMode(): MappingMode {
   try {
     const stored = window.localStorage.getItem(MAPPING_KEY);
     return stored === "edges" || stored === "corners" ? stored : "corners";
-  } catch {
+  } catch (cause) {
+    recordDiagnostic("warn", "storage.mapping.read", String(cause));
     return "corners";
   }
 }
@@ -41,61 +43,49 @@ export function loadMappingMode(): MappingMode {
 export function saveMappingMode(mode: MappingMode) {
   try {
     window.localStorage.setItem(MAPPING_KEY, mode);
-  } catch {
-    // Le mode reste utilisable pour la session si le stockage local est indisponible.
+  } catch (cause) {
+    recordDiagnostic("warn", "storage.mapping.write", String(cause));
   }
 }
 
 export function buildAssignments(area: EntertainmentArea, mode: MappingMode): ChannelAssignment[] {
-  const unused = new Set<Zone>(zonesFor(mode).map((zone) => zone.id));
-  const assignments: ChannelAssignment[] = [];
-
-  for (const channel of area.channels) {
-    const preferred = preferredZone(channel.position, mode);
-    const zone = unused.has(preferred) ? preferred : (unused.values().next().value ?? preferred);
-    unused.delete(zone);
-    assignments.push({ channelId: channel.channelId, zone });
-  }
-
-  return assignments;
+  const verticalAxis = detectVerticalAxis(area);
+  return area.channels.map((channel) => ({
+    channelId: channel.channelId,
+    zone: preferredZone(channel.position, mode, verticalAxis),
+  }));
 }
 
-function preferredZone(position: [number, number, number], mode: MappingMode): Zone {
-  const [x, , z] = position;
+type VerticalAxis = "y" | "z";
+
+/** Hue uses y for screen height. Keep z as a compatibility fallback for old areas. */
+function detectVerticalAxis(area: EntertainmentArea): VerticalAxis {
+  if (area.channels.length < 2) return "y";
+  const ys = area.channels.map((channel) => channel.position[1]);
+  const zs = area.channels.map((channel) => channel.position[2]);
+  const ySpread = Math.max(...ys) - Math.min(...ys);
+  const zSpread = Math.max(...zs) - Math.min(...zs);
+  return ySpread >= 0.2 || ySpread >= zSpread * 0.5 ? "y" : "z";
+}
+
+function preferredZone(position: [number, number, number], mode: MappingMode, verticalAxis: VerticalAxis): Zone {
+  const [x, y, z] = position;
+  const vertical = verticalAxis === "y" ? y : z;
   switch (mode) {
     case "edges":
-      return Math.abs(x) >= Math.abs(z)
+      return Math.abs(x) >= Math.abs(vertical)
         ? x < 0
           ? "left"
           : "right"
-        : z >= 0
+        : vertical >= 0
           ? "top"
           : "bottom";
     case "corners": {
-      // Prefer the dominant axis so edge midpoints still map to four distinct corners.
-      if (Math.abs(x) > Math.abs(z) + 0.05) {
-        return x < 0
-          ? z >= 0
-            ? "topLeft"
-            : "bottomLeft"
-          : z >= 0
-            ? "topRight"
-            : "bottomRight";
-      }
-      if (Math.abs(z) > Math.abs(x) + 0.05) {
-        return z >= 0
-          ? x < 0
-            ? "topLeft"
-            : "topRight"
-          : x < 0
-            ? "bottomLeft"
-            : "bottomRight";
-      }
       return x < 0
-        ? z >= 0
+        ? vertical >= 0
           ? "topLeft"
           : "bottomLeft"
-        : z >= 0
+        : vertical >= 0
           ? "topRight"
           : "bottomRight";
     }
