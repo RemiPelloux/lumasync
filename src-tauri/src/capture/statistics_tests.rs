@@ -102,3 +102,41 @@ fn quiet_noise_is_attenuated_without_stopping_convergence() {
     }
     assert!((square / 120.0).sqrt() < 0.0008);
 }
+
+#[test]
+fn quiet_noise_stays_stable_at_maximum_reactivity() {
+    let mut filter = ColorFilter::default();
+    let dt = (Duration::from_millis(16), 100.0);
+    filter.update([0.5, 0.0, 0.0], dt);
+    let mut square = 0.0;
+    for i in 0..120 {
+        let target = [0.5 + if i % 2 == 0 { 0.0018 } else { -0.0018 }, 0.0, 0.0];
+        square += (filter.update(target, dt)[0] - 0.5).powi(2);
+    }
+    assert!(
+        (square / 120.0).sqrt() < 0.001,
+        "rms={}",
+        (square / 120.0).sqrt()
+    );
+}
+
+#[test]
+fn reversing_small_changes_do_not_trigger_speed_boost() {
+    let dt = (Duration::from_millis(16), 80.0);
+    let mut filter = ColorFilter::default();
+    filter.update([0.45, 0.02, 0.0], dt);
+    let mut outputs = Vec::new();
+    for i in 0..24 {
+        let target = if i % 2 == 0 {
+            [0.452, 0.021, 0.0]
+        } else {
+            [0.448, 0.019, 0.0]
+        };
+        outputs.push(filter.update(target, dt));
+    }
+    let spread = outputs
+        .iter()
+        .map(|value| distance(*value, [0.45, 0.02, 0.0]))
+        .fold(0.0, f32::max);
+    assert!(spread < 0.002, "oscillation spread={spread}");
+}

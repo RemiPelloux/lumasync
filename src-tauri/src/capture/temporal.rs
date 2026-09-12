@@ -8,7 +8,8 @@ const MAX_GAP: f32 = 0.25;
 const DERIVATIVE_CUTOFF: f32 = 12.0;
 const PREDICTION_SECONDS: f32 = 0.012;
 const MAX_PREDICTION: f32 = 0.015;
-const NOISE_FLOOR: f32 = 0.004;
+const NOISE_FLOOR: f32 = 0.006;
+const QUIET_TARGET_BLEND: f32 = 0.2;
 const SETTLED_ERROR: f32 = 0.00001;
 const BASE_CUTOFF: f32 = 2.0;
 const RESPONSE_CUTOFF: f32 = 8.0;
@@ -24,17 +25,28 @@ pub(super) struct ColorFilter {
 impl ColorFilter {
     pub fn update(&mut self, target: Vector, timing: (Duration, f32)) -> Vector {
         let (elapsed, reactivity) = timing;
-        let Some(previous) = self.previous.replace(target) else {
+        let Some(previous) = self.previous else {
+            self.previous = Some(target);
             self.value = target;
             return target;
         };
         let dt = elapsed.as_secs_f32().clamp(0.001, MAX_GAP);
         if distance(previous, target) > SCENE_CUT || elapsed.as_secs_f32() > MAX_GAP {
+            self.previous = Some(target);
             self.value = target;
             self.velocity = [0.0; 3];
             return target;
         }
-        self.advance(previous, target, (dt, reactivity))
+        // Capture noise often appears as tiny alternating changes. Blend only
+        // those sub-floor observations so a static scene does not shimmer;
+        // larger or sustained changes still take the responsive path.
+        let filtered_target = if distance(previous, target) < NOISE_FLOOR {
+            mix(previous, target, QUIET_TARGET_BLEND)
+        } else {
+            target
+        };
+        self.previous = Some(filtered_target);
+        self.advance(previous, filtered_target, (dt, reactivity))
     }
 
     fn advance(&mut self, previous: Vector, target: Vector, timing: (f32, f32)) -> Vector {
@@ -52,7 +64,15 @@ impl ColorFilter {
         // responsive enough for video without making the low end unstable.
         // The previous squared curve kept 50% reactivity close to the base
         // cutoff, making transitions feel noticeably delayed.
-        let cutoff = BASE_CUTOFF + RESPONSE_CUTOFF * response + speed * SPEED_GAIN;
+        // Only coherent motion may accelerate the filter. Direction changes
+        // are usually capture noise on a stable surface and should decay at
+        // the normal response instead of causing a visible color snap.
+        let speed_boost = if coherent {
+            speed.min(1.5) * SPEED_GAIN
+        } else {
+            0.0
+        };
+        let cutoff = BASE_CUTOFF + RESPONSE_CUTOFF * response + speed_boost;
         let predicted = predict(target, self.velocity, coherent);
         self.value = mix(self.value, predicted, alpha(cutoff, dt));
         // Stable targets still converge. The old held-target early return froze them.
