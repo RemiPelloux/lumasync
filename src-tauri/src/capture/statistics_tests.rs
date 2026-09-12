@@ -140,3 +140,31 @@ fn reversing_small_changes_do_not_trigger_speed_boost() {
         .fold(0.0, f32::max);
     assert!(spread < 0.002, "oscillation spread={spread}");
 }
+
+#[test]
+fn prediction_never_overshoots_observed_components() {
+    let dt = (Duration::from_millis(16), 100.0);
+    let mut filter = ColorFilter::default();
+    filter.update([0.25, -0.12, 0.08], dt);
+    let mut previous: [f32; 3] = [0.25, -0.12, 0.08];
+    for target in [
+        [0.38, -0.04, 0.02],
+        [0.52, 0.06, -0.03],
+        [0.30, 0.14, -0.08],
+        [0.44, 0.02, 0.04],
+    ] {
+        let output = filter.update(target, dt);
+        for i in 0..3 {
+            let low = previous[i].min(target[i]);
+            let high = previous[i].max(target[i]);
+            assert!(
+                (low..=high).contains(&output[i]),
+                "component {i} overshot: previous={} target={} output={}",
+                previous[i],
+                target[i],
+                output[i]
+            );
+        }
+        previous = output;
+    }
+}

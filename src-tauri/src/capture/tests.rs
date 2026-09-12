@@ -148,6 +148,9 @@ fn scene_cut_and_long_gap_reset_prediction() {
     filter.update([0.5, 0.1, 0.0], dt);
     filter.update([0.51, 0.1, 0.0], dt);
     let target = [0.2, -0.1, 0.0];
+    // One anomalous frame is held; a second consecutive cut confirms the
+    // scene transition and then follows it immediately.
+    assert_ne!(filter.update(target, dt), target);
     assert_eq!(filter.update(target, dt), target);
     let after_gap = [0.25, 0.0, 0.0];
     assert_eq!(
@@ -234,6 +237,17 @@ fn every_cone_includes_the_center_even_on_a_single_pixel_frame() {
     let image = frame(RgbaImage::from_pixel(1, 1, Rgba([255, 255, 255, 255])));
     for zone in ZONES {
         assert_eq!(sample(&image, zone), [255, 255, 255]);
+    }
+}
+
+#[test]
+fn shallow_cones_still_capture_corner_center_transition() {
+    let image = frame(RgbaImage::from_pixel(160, 90, Rgba([255, 32, 0, 255])));
+    let bounds = ContentBounds::full(&image);
+    let mut analyzer = Analyzer::new(bounds, [true; 8], 5.0);
+    let output = analyzer.analyze(&image, bounds);
+    for lab in output {
+        assert!(lab[0].is_finite() && lab[0] > 0.1, "{lab:?}");
     }
 }
 

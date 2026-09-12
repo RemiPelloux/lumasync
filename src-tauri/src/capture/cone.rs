@@ -13,10 +13,10 @@ pub(super) const ZONES: [Zone; 8] = [
 ];
 const GRID_WIDTH: u32 = 80;
 const GRID_HEIGHT: u32 = 45;
-const EDGE_SIGMA: f32 = 0.42;
-const CORNER_SIGMA: f32 = 0.27;
-const BASE_REACH: f32 = 0.68;
-const DEPTH_SCALE: f32 = 60.0;
+const EDGE_SIGMA: f32 = 0.30;
+const CORNER_SIGMA: f32 = 0.22;
+const BASE_REACH: f32 = 0.72;
+const DEPTH_SCALE: f32 = 75.0;
 pub(super) const MIN_WEIGHT: f32 = 0.0001;
 
 pub(super) fn zone_index(zone: Zone) -> usize {
@@ -88,7 +88,7 @@ fn cone_weight(zone: Zone, point: [f32; 2], depth: f32) -> f32 {
         return 0.0;
     }
     let corner = anchor[0] != 0.5 && anchor[1] != 0.5;
-    let sigma = if corner { CORNER_SIGMA } else { EDGE_SIGMA } + inward * 0.35;
+    let sigma = if corner { CORNER_SIGMA } else { EDGE_SIGMA } + inward * 0.25;
     let angular = (-0.5 * (lateral / sigma).powi(2)).exp();
     angular * (1.0 - inward / reach).powi(2)
 }

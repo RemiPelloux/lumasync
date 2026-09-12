@@ -8,18 +8,19 @@ const MAX_GAP: f32 = 0.25;
 const DERIVATIVE_CUTOFF: f32 = 12.0;
 const PREDICTION_SECONDS: f32 = 0.012;
 const MAX_PREDICTION: f32 = 0.015;
-const NOISE_FLOOR: f32 = 0.006;
-const QUIET_TARGET_BLEND: f32 = 0.2;
+const NOISE_FLOOR: f32 = 0.004;
 const SETTLED_ERROR: f32 = 0.00001;
 const BASE_CUTOFF: f32 = 2.0;
 const RESPONSE_CUTOFF: f32 = 8.0;
 const SPEED_GAIN: f32 = 6.0;
+const SCENE_CUT_CONFIRMATIONS: u8 = 2;
 
 #[derive(Default)]
 pub(super) struct ColorFilter {
     value: Vector,
     previous: Option<Vector>,
     velocity: Vector,
+    cut_streak: u8,
 }
 
 impl ColorFilter {
@@ -32,21 +33,19 @@ impl ColorFilter {
         };
         let dt = elapsed.as_secs_f32().clamp(0.001, MAX_GAP);
         if distance(previous, target) > SCENE_CUT || elapsed.as_secs_f32() > MAX_GAP {
-            self.previous = Some(target);
-            self.value = target;
             self.velocity = [0.0; 3];
-            return target;
+            self.cut_streak = self.cut_streak.saturating_add(1);
+            if self.cut_streak >= SCENE_CUT_CONFIRMATIONS || elapsed.as_secs_f32() > MAX_GAP {
+                self.cut_streak = 0;
+                self.previous = Some(target);
+                self.value = target;
+                return target;
+            }
+            return self.value;
         }
-        // Capture noise often appears as tiny alternating changes. Blend only
-        // those sub-floor observations so a static scene does not shimmer;
-        // larger or sustained changes still take the responsive path.
-        let filtered_target = if distance(previous, target) < NOISE_FLOOR {
-            mix(previous, target, QUIET_TARGET_BLEND)
-        } else {
-            target
-        };
-        self.previous = Some(filtered_target);
-        self.advance(previous, filtered_target, (dt, reactivity))
+        self.cut_streak = 0;
+        self.previous = Some(target);
+        self.advance(previous, target, (dt, reactivity))
     }
 
     fn advance(&mut self, previous: Vector, target: Vector, timing: (f32, f32)) -> Vector {
@@ -56,7 +55,13 @@ impl ColorFilter {
         } else {
             std::array::from_fn(|i| (target[i] - previous[i]) / dt)
         };
-        let coherent = dot(observation, self.velocity) > 0.0;
+        // Require meaningful alignment before using the derivative to predict;
+        // a near-orthogonal vector is usually per-channel capture noise.
+        let velocity_speed = dot(self.velocity, self.velocity).sqrt();
+        let observation_speed = dot(observation, observation).sqrt();
+        let coherent = velocity_speed > NOISE_FLOOR
+            && observation_speed > NOISE_FLOOR
+            && dot(observation, self.velocity) > velocity_speed * observation_speed * 0.25;
         self.velocity = mix(self.velocity, observation, alpha(DERIVATIVE_CUTOFF, dt));
         let speed = dot(self.velocity, self.velocity).sqrt();
         let response = (reactivity / 100.0).clamp(0.1, 1.0);
@@ -64,17 +69,17 @@ impl ColorFilter {
         // responsive enough for video without making the low end unstable.
         // The previous squared curve kept 50% reactivity close to the base
         // cutoff, making transitions feel noticeably delayed.
-        // Only coherent motion may accelerate the filter. Direction changes
-        // are usually capture noise on a stable surface and should decay at
-        // the normal response instead of causing a visible color snap.
-        let speed_boost = if coherent {
-            speed.min(1.5) * SPEED_GAIN
-        } else {
-            0.0
-        };
-        let cutoff = BASE_CUTOFF + RESPONSE_CUTOFF * response + speed_boost;
+        let cutoff = BASE_CUTOFF + RESPONSE_CUTOFF * response + speed * SPEED_GAIN;
         let predicted = predict(target, self.velocity, coherent);
-        self.value = mix(self.value, predicted, alpha(cutoff, dt));
+        // Prediction is only an aid for latency; it must never overshoot an
+        // observed component, otherwise a small Oklab extrapolation can turn
+        // into an unrelated hue after gamut mapping.
+        let candidate = mix(self.value, predicted, alpha(cutoff, dt));
+        self.value = std::array::from_fn(|i| {
+            let low = self.value[i].min(target[i]);
+            let high = self.value[i].max(target[i]);
+            candidate[i].clamp(low, high)
+        });
         // Stable targets still converge. The old held-target early return froze them.
         if distance(target, self.value) < SETTLED_ERROR {
             self.value = target;
