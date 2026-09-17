@@ -51,13 +51,22 @@ impl DesktopCapture {
                 Err(error)
             };
         }
+        let protected_content = info.ProtectedContentMaskedOut.as_bool();
         let result = if info.LastPresentTime == 0 {
             Ok(false)
+        } else if protected_content {
+            // Protected video surfaces are often delivered as black textures.
+            // Keep the previous CPU frame and let the worker retain its colors.
+            frame.protected_content = true;
+            Ok(true)
         } else {
             resource
                 .ok_or_else(|| Error::from(E_FAIL))
                 .and_then(|resource| self.copy(&resource, frame))
-                .map(|()| true)
+                .map(|()| {
+                    frame.protected_content = false;
+                    true
+                })
         };
         // Always release acquired frames, including copy/map failures.
         let released = unsafe { self.duplication.ReleaseFrame() };

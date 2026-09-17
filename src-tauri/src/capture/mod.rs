@@ -70,7 +70,10 @@ pub fn run_capture(
         return Ok(());
     }
     let mut pipeline = Pipeline::new(request, &capture.frame);
-    pipeline.observe(&capture.frame);
+    let has_valid_frame = can_analyze_frame(capture.frame.protected_content);
+    if has_valid_frame {
+        pipeline.observe(&capture.frame);
+    }
     transport::mark_running(&status);
     crate::diagnostics::info(
         "capture.running",
@@ -84,6 +87,9 @@ pub fn run_capture(
             period,
             capture_errors: 0,
             capture_error_logged_at: Instant::now() - CAPTURE_ERROR_LOG_INTERVAL,
+            has_valid_frame,
+            protected_frames: 0,
+            protected_logged_at: Instant::now() - CAPTURE_ERROR_LOG_INTERVAL,
         },
         &stop,
         &status,
@@ -97,6 +103,9 @@ struct Worker {
     period: Duration,
     capture_errors: u32,
     capture_error_logged_at: Instant,
+    has_valid_frame: bool,
+    protected_frames: u32,
+    protected_logged_at: Instant,
 }
 
 impl Worker {
@@ -104,7 +113,25 @@ impl Worker {
         let fresh = match self.capture.update() {
             Ok(fresh) => {
                 self.capture_errors = 0;
-                fresh
+                if fresh && !can_analyze_frame(self.capture.frame.protected_content) {
+                    self.protected_frames = self.protected_frames.saturating_add(1);
+                    let now = Instant::now();
+                    if should_log_capture_error(self.protected_logged_at, now) {
+                        crate::diagnostics::warn(
+                            "capture.protected",
+                            &format!(
+                                "Contenu protégé masqué par Windows; dernière image conservée ({})",
+                                self.protected_frames
+                            ),
+                        );
+                        self.protected_logged_at = now;
+                    }
+                    false
+                } else {
+                    self.protected_frames = 0;
+                    self.has_valid_frame = self.has_valid_frame || fresh;
+                    fresh
+                }
             }
             Err(error) => {
                 self.capture_errors = self.capture_errors.saturating_add(1);
@@ -122,11 +149,13 @@ impl Worker {
                 false
             }
         };
-        if fresh {
+        if fresh && self.has_valid_frame {
             self.pipeline.observe(&self.capture.frame);
         }
         // Even without a new desktop frame, converge toward the latest target.
-        self.pipeline.advance(elapsed);
+        if self.has_valid_frame {
+            self.pipeline.advance(elapsed);
+        }
         Ok(())
     }
 }
@@ -134,6 +163,11 @@ impl Worker {
 #[inline]
 fn should_log_capture_error(last_logged: Instant, now: Instant) -> bool {
     now.duration_since(last_logged) >= CAPTURE_ERROR_LOG_INTERVAL
+}
+
+#[inline]
+fn can_analyze_frame(protected_content: bool) -> bool {
+    !protected_content
 }
 
 fn run_loop(
@@ -154,13 +188,16 @@ fn run_loop(
         }
         previous = started;
         let now = Instant::now();
-        if reconnect_after.is_none() {
+        // Do not emit an empty Hue frame while the first desktop image is
+        // still protected/unavailable. Hue treats an empty update as a request
+        // to clear the entertainment channels, which turns every lamp off.
+        if worker.has_valid_frame && reconnect_after.is_none() {
             if let Err(error) = worker.transport.send(&worker.pipeline.outgoing) {
                 crate::diagnostics::warn("transport.send", &error);
                 reconnect_after = Some(now);
             }
         }
-        if reconnect_after.is_some_and(|retry_at| now >= retry_at) {
+        if worker.has_valid_frame && reconnect_after.is_some_and(|retry_at| now >= retry_at) {
             match worker.transport.reconnect(stop, status) {
                 Ok(()) => {
                     reconnect_failures = 0;
@@ -217,5 +254,11 @@ mod resilience_tests {
             now - CAPTURE_ERROR_LOG_INTERVAL + Duration::from_millis(1),
             now
         ));
+    }
+
+    #[test]
+    fn protected_video_frames_are_not_used_as_black_analysis_frames() {
+        assert!(!can_analyze_frame(true));
+        assert!(can_analyze_frame(false));
     }
 }

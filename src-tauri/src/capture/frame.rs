@@ -4,6 +4,8 @@ pub(super) struct ScreenFrame {
     pub height: u32,
     pub pixels: Vec<u8>,
     pub bgra: bool,
+    /// True when Windows masked protected video content in this frame.
+    pub protected_content: bool,
 }
 
 impl ScreenFrame {
@@ -22,5 +24,6 @@ impl ScreenFrame {
         self.height = image.height();
         self.pixels = image.into_raw();
         self.bgra = false;
+        self.protected_content = false;
     }
 }

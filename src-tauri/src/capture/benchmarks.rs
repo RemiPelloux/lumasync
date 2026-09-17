@@ -9,6 +9,7 @@ fn analysis_benchmark() {
         height: 2160,
         pixels: vec![0; 3840 * 2160 * 4],
         bgra: false,
+        protected_content: false,
     };
     for (i, pixel) in frame.pixels.chunks_exact_mut(4).enumerate() {
         pixel.copy_from_slice(&[
