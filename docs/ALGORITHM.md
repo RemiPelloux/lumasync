@@ -68,10 +68,13 @@ ensuite affinée au pixel. Un bord noir isolé ne suffit pas à recadrer l’ima
 2. Conversion en [Oklab, défini par Björn Ottosson](https://bottosson.github.io/posts/oklab/).
 3. Accumulation unique par pixel : moyenne linéaire, moments Oklab et histogramme
    circulaire de 36 classes de teinte avec interpolation entre classes.
+   Les conversions Oklab sont conservées dans un cache direct local à chaque
+   image pour les couleurs RGB répétées, avec recalcul sûr en cas de collision.
 4. Estimation de la variance perceptuelle par E[Lab²] − E[Lab]².
 5. Mélange continu entre moyenne et teinte dominante selon la variance, la part
    chromatique et la séparation entre les deux pics. Des masses égales de teintes
    éloignées ne sélectionnent pas arbitrairement un gagnant.
+   Une rampe de couverture atténue les accents saturés isolés avant ce renforcement.
 6. Atténuation progressive des petites zones blanches dans les scènes colorées.
    Une image blanche reste blanche. C’est une heuristique, pas une reconnaissance
    sémantique des sous-titres : un petit objet blanc peut aussi être atténué.
@@ -87,6 +90,11 @@ Les observations de couleurs successives identiques sont réutilisées exactemen
 y compris leurs moments Oklab et les classes de teinte. Les pixels sans contribution
 à une zone active sont retirés du plan. Ces optimisations ne réduisent pas le budget
 de qualité : une régression compare les sorties à une accumulation indépendante.
+
+Les trames Hue sont limitées à environ 40 envois par seconde et les changements
+d’un seul niveau de canal sont regroupés. Un heartbeat à 10 Hz maintient une scène
+statique active sans saturer le tampon UDP Windows ; une reconnexion réinitialise
+ce cache d’émission et renvoie immédiatement la couleur courante.
 
 ## Transitions et anticipation
 

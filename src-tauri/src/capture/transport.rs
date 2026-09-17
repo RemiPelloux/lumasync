@@ -11,14 +11,21 @@ use std::{
     time::{Duration, Instant},
 };
 
-const RECONNECT_ATTEMPTS: u64 = 2;
+pub(super) const RECONNECT_ATTEMPTS: u64 = 5;
 const RECONNECT_DELAY: Duration = Duration::from_millis(150);
+const RECONNECT_BACKOFF_INITIAL: Duration = Duration::from_millis(500);
+const RECONNECT_BACKOFF_MAX: Duration = Duration::from_secs(8);
 const STOP_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const MIN_SEND_INTERVAL: Duration = Duration::from_millis(24);
+const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(100);
+const MATERIAL_COLOR_DELTA: u8 = 2;
 
 pub(super) struct Transport {
     stream: HueStream,
     credentials: Credentials,
     area_id: String,
+    last_sent: Vec<(u8, Rgb)>,
+    last_send: Instant,
 }
 
 impl Transport {
@@ -28,11 +35,22 @@ impl Transport {
             stream,
             credentials,
             area_id,
+            last_sent: Vec::new(),
+            last_send: Instant::now() - HEARTBEAT_INTERVAL,
         })
     }
 
     pub(super) fn send(&mut self, colors: &[(u8, Rgb)]) -> Result<(), String> {
-        self.stream.send(colors)
+        let now = Instant::now();
+        let since_last = now.duration_since(self.last_send);
+        if !should_emit(&self.last_sent, colors, since_last) {
+            return Ok(());
+        }
+        self.stream.send(colors)?;
+        self.last_sent.clear();
+        self.last_sent.extend_from_slice(colors);
+        self.last_send = now;
+        Ok(())
     }
 
     pub(super) fn reconnect(
@@ -46,7 +64,8 @@ impl Transport {
             }
             if let Ok(mut current) = status.lock() {
                 current.phase = SyncPhase::Reconnecting;
-                current.message = format!("Reconnexion au pont… {attempt}/{RECONNECT_ATTEMPTS}");
+                current.message =
+                    format!("Reconnexion au pont… tentative {attempt}/{RECONNECT_ATTEMPTS}");
             }
             diagnostics::warn(
                 "transport.reconnect",
@@ -61,6 +80,8 @@ impl Transport {
                         return Ok(());
                     }
                     self.stream = stream;
+                    self.last_sent.clear();
+                    self.last_send = Instant::now() - HEARTBEAT_INTERVAL;
                     diagnostics::info("transport.reconnected", "Hue connection restored.");
                     mark_running(status);
                     return Ok(());
@@ -70,6 +91,25 @@ impl Transport {
         }
         Err("Le flux Hue a été interrompu et la reconnexion a échoué.".to_owned())
     }
+}
+
+fn materially_changed(previous: &[(u8, Rgb)], current: &[(u8, Rgb)]) -> bool {
+    previous.len() != current.len()
+        || previous
+            .iter()
+            .zip(current)
+            .any(|((old_channel, old), (channel, new))| {
+                old_channel != channel
+                    || old.r.abs_diff(new.r) >= MATERIAL_COLOR_DELTA
+                    || old.g.abs_diff(new.g) >= MATERIAL_COLOR_DELTA
+                    || old.b.abs_diff(new.b) >= MATERIAL_COLOR_DELTA
+            })
+}
+
+#[inline]
+fn should_emit(previous: &[(u8, Rgb)], current: &[(u8, Rgb)], since_last: Duration) -> bool {
+    since_last >= MIN_SEND_INTERVAL
+        && (materially_changed(previous, current) || since_last >= HEARTBEAT_INTERVAL)
 }
 
 fn wait_for_retry(stop: &AtomicBool, delay: Duration) -> bool {
@@ -82,6 +122,17 @@ fn wait_for_retry(stop: &AtomicBool, delay: Duration) -> bool {
         std::thread::sleep(remaining.min(STOP_POLL_INTERVAL));
     }
     false
+}
+
+/// Delay before retrying a connection after all attempts in one reconnect
+/// burst failed. The cap keeps a long bridge outage from spinning the worker
+/// while still allowing recovery without restarting capture.
+pub(super) fn reconnect_backoff(failures: u32) -> Duration {
+    let exponent = failures.saturating_sub(1).min(4);
+    let multiplier = 1_u32 << exponent;
+    RECONNECT_BACKOFF_INITIAL
+        .saturating_mul(multiplier)
+        .min(RECONNECT_BACKOFF_MAX)
 }
 
 fn connect(credentials: &Credentials, area: &str) -> Result<HueStream, String> {
@@ -124,5 +175,83 @@ mod tests {
         let status = status.lock().unwrap();
         assert!(matches!(status.phase, SyncPhase::Stopping));
         assert!(!status.running);
+    }
+
+    #[test]
+    fn tiny_color_deltas_do_not_trigger_network_bursts() {
+        let previous = vec![(
+            1,
+            Rgb {
+                r: 100,
+                g: 120,
+                b: 140,
+            },
+        )];
+        let current = vec![(
+            1,
+            Rgb {
+                r: 101,
+                g: 121,
+                b: 141,
+            },
+        )];
+        assert!(!materially_changed(&previous, &current));
+        let changed = vec![(
+            1,
+            Rgb {
+                r: 103,
+                g: 120,
+                b: 140,
+            },
+        )];
+        assert!(materially_changed(&previous, &changed));
+    }
+
+    #[test]
+    fn channel_changes_are_detected_even_when_lengths_match() {
+        let previous = vec![(
+            1,
+            Rgb {
+                r: 10,
+                g: 10,
+                b: 10,
+            },
+        )];
+        let current = vec![(
+            2,
+            Rgb {
+                r: 10,
+                g: 10,
+                b: 10,
+            },
+        )];
+        assert!(materially_changed(&previous, &current));
+    }
+
+    #[test]
+    fn emission_is_rate_limited_but_heartbeats_keep_static_streams_alive() {
+        let frame = vec![(
+            1,
+            Rgb {
+                r: 20,
+                g: 30,
+                b: 40,
+            },
+        )];
+        assert!(!should_emit(&[], &frame, Duration::from_millis(1)));
+        assert!(should_emit(&[], &frame, MIN_SEND_INTERVAL));
+        assert!(!should_emit(&frame, &frame, Duration::from_millis(50)));
+        assert!(should_emit(&frame, &frame, HEARTBEAT_INTERVAL));
+    }
+
+    #[test]
+    fn reconnect_backoff_grows_then_stays_bounded() {
+        assert_eq!(reconnect_backoff(0), RECONNECT_BACKOFF_INITIAL);
+        assert_eq!(reconnect_backoff(1), Duration::from_millis(500));
+        assert_eq!(reconnect_backoff(2), Duration::from_secs(1));
+        assert_eq!(reconnect_backoff(3), Duration::from_secs(2));
+        assert_eq!(reconnect_backoff(4), Duration::from_secs(4));
+        assert_eq!(reconnect_backoff(5), RECONNECT_BACKOFF_MAX);
+        assert_eq!(reconnect_backoff(u32::MAX), RECONNECT_BACKOFF_MAX);
     }
 }

@@ -17,6 +17,7 @@ pub(super) struct Pipeline {
     bounds_at: Instant,
     targets: [Vector; 8],
     filters: [ColorFilter; 8],
+    invalid_color_logged: bool,
     pub(super) outgoing: Vec<(u8, Rgb)>,
 }
 
@@ -36,6 +37,7 @@ impl Pipeline {
             bounds_at: Instant::now() - BOUNDS_INTERVAL,
             targets: [[0.0; 3]; 8],
             filters: std::array::from_fn(|_| ColorFilter::default()),
+            invalid_color_logged: false,
             outgoing: Vec::with_capacity(capacity),
         }
     }
@@ -60,6 +62,13 @@ impl Pipeline {
     pub(super) fn advance(&mut self, elapsed: Duration) {
         let colors: [Rgb; 8] = std::array::from_fn(|i| {
             let lab = self.filters[i].update(self.targets[i], (elapsed, self.request.reactivity));
+            if !self.invalid_color_logged && lab.iter().any(|value| !value.is_finite()) {
+                crate::diagnostics::warn(
+                    "capture.color.invalid",
+                    "A non-finite analyzed color was clamped before Hue output.",
+                );
+                self.invalid_color_logged = true;
+            }
             color::encode(
                 color::gamut_map(lab),
                 self.request.brightness / 100.0,

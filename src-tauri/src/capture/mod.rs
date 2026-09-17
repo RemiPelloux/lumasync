@@ -32,6 +32,8 @@ use std::{
 };
 use transport::Transport;
 
+const CAPTURE_ERROR_LOG_INTERVAL: Duration = Duration::from_secs(2);
+
 // Compatibility boundary for the existing Tauri worker.
 pub fn run_capture(
     credentials: Credentials,
@@ -80,6 +82,8 @@ pub fn run_capture(
             pipeline,
             transport,
             period,
+            capture_errors: 0,
+            capture_error_logged_at: Instant::now() - CAPTURE_ERROR_LOG_INTERVAL,
         },
         &stop,
         &status,
@@ -91,13 +95,33 @@ struct Worker {
     pipeline: Pipeline,
     transport: Transport,
     period: Duration,
+    capture_errors: u32,
+    capture_error_logged_at: Instant,
 }
 
 impl Worker {
     fn tick(&mut self, elapsed: Duration) -> Result<(), String> {
-        let fresh = self.capture.update().inspect_err(|error| {
-            crate::diagnostics::error("capture.frame", error);
-        })?;
+        let fresh = match self.capture.update() {
+            Ok(fresh) => {
+                self.capture_errors = 0;
+                fresh
+            }
+            Err(error) => {
+                self.capture_errors = self.capture_errors.saturating_add(1);
+                let now = Instant::now();
+                if should_log_capture_error(self.capture_error_logged_at, now) {
+                    crate::diagnostics::warn(
+                        "capture.frame.retry",
+                        &format!(
+                            "Capture indisponible; conservation de la dernière image ({}) : {error}",
+                            self.capture_errors
+                        ),
+                    );
+                    self.capture_error_logged_at = now;
+                }
+                false
+            }
+        };
         if fresh {
             self.pipeline.observe(&self.capture.frame);
         }
@@ -105,6 +129,11 @@ impl Worker {
         self.pipeline.advance(elapsed);
         Ok(())
     }
+}
+
+#[inline]
+fn should_log_capture_error(last_logged: Instant, now: Instant) -> bool {
+    now.duration_since(last_logged) >= CAPTURE_ERROR_LOG_INTERVAL
 }
 
 fn run_loop(
@@ -115,6 +144,8 @@ fn run_loop(
     let mut metrics = Metrics::new();
     let mut previous = Instant::now() - worker.period;
     let mut deadline = Instant::now();
+    let mut reconnect_failures = 0_u32;
+    let mut reconnect_after = None;
     while !stop.load(Ordering::Relaxed) {
         let started = Instant::now();
         worker.tick(started.duration_since(previous))?;
@@ -122,10 +153,34 @@ fn run_loop(
             break;
         }
         previous = started;
-        if let Err(error) = worker.transport.send(&worker.pipeline.outgoing) {
-            crate::diagnostics::warn("transport.send", &error);
-            worker.transport.reconnect(stop, status)?;
-            // Discard the old colors after reconnect: capture again next tick.
+        let now = Instant::now();
+        if reconnect_after.is_none() {
+            if let Err(error) = worker.transport.send(&worker.pipeline.outgoing) {
+                crate::diagnostics::warn("transport.send", &error);
+                reconnect_after = Some(now);
+            }
+        }
+        if reconnect_after.is_some_and(|retry_at| now >= retry_at) {
+            match worker.transport.reconnect(stop, status) {
+                Ok(()) => {
+                    reconnect_failures = 0;
+                    reconnect_after = None;
+                    // Discard the old colors after reconnect: capture again next tick.
+                }
+                Err(error) => {
+                    reconnect_failures = reconnect_failures.saturating_add(1);
+                    let backoff = transport::reconnect_backoff(reconnect_failures);
+                    reconnect_after = Some(Instant::now() + backoff);
+                    crate::diagnostics::warn(
+                        "transport.reconnect.exhausted",
+                        &format!(
+                            "Hue reconnect failed after {} attempts; retrying in {:.1}s: {error}",
+                            transport::RECONNECT_ATTEMPTS,
+                            backoff.as_secs_f32()
+                        ),
+                    );
+                }
+            }
         }
         metrics.record(started.elapsed());
         metrics.publish(status, &worker.pipeline);
@@ -145,4 +200,22 @@ pub fn validate_assignments(assignments: &[ChannelAssignment]) -> Result<(), Str
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod resilience_tests {
+    use super::*;
+
+    #[test]
+    fn capture_error_logging_is_rate_limited() {
+        let now = Instant::now();
+        assert!(should_log_capture_error(
+            now - CAPTURE_ERROR_LOG_INTERVAL,
+            now
+        ));
+        assert!(!should_log_capture_error(
+            now - CAPTURE_ERROR_LOG_INTERVAL + Duration::from_millis(1),
+            now
+        ));
+    }
 }

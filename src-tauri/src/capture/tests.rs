@@ -63,6 +63,18 @@ fn cone_sees_color_away_from_corner() {
 }
 
 #[test]
+fn isolated_blue_strip_does_not_recolor_the_top_zone() {
+    let mut image = RgbaImage::from_pixel(160, 90, Rgba([8, 8, 8, 255]));
+    for y in 0..8 {
+        for x in 68..92 {
+            image.put_pixel(x, y, Rgba([0, 0, 255, 255]));
+        }
+    }
+    let top = sample(&frame(image), Zone::Top);
+    assert!(top[2] < 70 && top[2] < top[0].saturating_add(35), "{top:?}");
+}
+
+#[test]
 fn cone_weights_mirror_and_depth_expands_coverage() {
     let full = ContentBounds {
         left: 0,
@@ -209,6 +221,20 @@ fn brightness_and_ceiling_preserve_channel_ratios() {
     assert_eq!([rgb.r, rgb.g, rgb.b], [120, 60, 30]);
     let capped = encode(linear([240, 120, 60]), 1.0, 0.5);
     assert!(capped.r <= 128 && capped.g <= 64 && capped.b <= 32);
+}
+
+#[test]
+fn invalid_color_values_are_encoded_as_safe_black() {
+    let rgb = encode(
+        [f32::NAN, f32::INFINITY, -f32::INFINITY],
+        f32::NAN,
+        f32::NAN,
+    );
+    assert_eq!([rgb.r, rgb.g, rgb.b], [0, 0, 0]);
+    let mapped = gamut_map([f32::NAN, f32::INFINITY, -f32::INFINITY]);
+    assert!(mapped
+        .iter()
+        .all(|value| value.is_finite() && (0.0..=1.0).contains(value)));
 }
 
 #[test]

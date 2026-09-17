@@ -3,7 +3,7 @@ use super::{
     color::{to_lab, Vector},
     cone::{ConePlan, MIN_WEIGHT},
     frame::ScreenFrame,
-    spectrum::{Observation, Spectrum},
+    spectrum::{Observation, ObservationCache, Spectrum},
 };
 
 pub(super) struct Analyzer {
@@ -29,14 +29,18 @@ impl Analyzer {
             self.plan.retain_active(self.active);
         }
         let mut spectra: [Spectrum; 8] = std::array::from_fn(|_| Spectrum::default());
-        let mut previous = [0; 3];
-        let mut observation = Observation::new([0.0; 3]);
+        let mut cache = ObservationCache::default();
+        let mut previous: Option<([u8; 3], Observation)> = None;
         for point in &self.plan.points {
             let pixel = image.rgb(point.x, point.y);
-            if pixel != previous {
-                observation = Observation::new(super::color::linear(pixel));
-                previous = pixel;
-            }
+            let observation = match previous {
+                Some((previous_pixel, observation)) if previous_pixel == pixel => observation,
+                _ => {
+                    let observation = cache.get(pixel);
+                    previous = Some((pixel, observation));
+                    observation
+                }
+            };
             for (i, spectrum) in spectra.iter_mut().enumerate() {
                 if self.active[i] && point.weights[i] > MIN_WEIGHT {
                     spectrum.add(&observation, point.weights[i]);

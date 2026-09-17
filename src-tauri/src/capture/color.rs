@@ -64,7 +64,11 @@ pub(super) fn gamut_map(lab: Vector) -> Vector {
     // Temporal extrapolation can briefly push lightness outside Oklab's
     // displayable range. Clamp it before gamut checks so the chroma search
     // preserves a valid perceptual lightness instead of relying on RGB clips.
-    let lab = [lab[0].clamp(0.0, 1.0), lab[1], lab[2]];
+    let lab = [
+        finite_or(lab[0], 0.0).clamp(0.0, 1.0),
+        finite_or(lab[1], 0.0),
+        finite_or(lab[2], 0.0),
+    ];
     let rgb = from_lab(lab);
     if in_gamut(rgb) {
         return rgb.map(|v| v.clamp(0.0, 1.0));
@@ -86,14 +90,16 @@ fn in_gamut(rgb: Vector) -> bool {
 }
 
 pub(super) fn encode(rgb: Vector, brightness: f32, ceiling: f32) -> Rgb {
+    let brightness = finite_or(brightness, 0.0).clamp(0.0, 1.0);
+    let ceiling = finite_or(ceiling, 0.0).clamp(0.0, 1.0);
     let mut encoded = rgb.map(|v| {
-        let v = v.clamp(0.0, 1.0);
+        let v = finite_or(v, 0.0).clamp(0.0, 1.0);
         let srgb = if v <= 0.0031308 {
             12.92 * v
         } else {
             1.055 * v.powf(1.0 / 2.4) - 0.055
         };
-        srgb * brightness.clamp(0.0, 1.0)
+        srgb * brightness
     });
     let peak = encoded.iter().copied().fold(0.0, f32::max);
     let scale = (ceiling / peak.max(0.00001)).min(1.0);
@@ -102,5 +108,14 @@ pub(super) fn encode(rgb: Vector, brightness: f32, ceiling: f32) -> Rgb {
         r: encoded[0] as u8,
         g: encoded[1] as u8,
         b: encoded[2] as u8,
+    }
+}
+
+#[inline]
+fn finite_or(value: f32, fallback: f32) -> f32 {
+    if value.is_finite() {
+        value
+    } else {
+        fallback
     }
 }

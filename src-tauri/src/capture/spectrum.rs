@@ -5,8 +5,10 @@ const CHROMA_FLOOR: f32 = 0.025;
 const EPSILON: f32 = 0.000001;
 const DOMINANT_BLEND: f32 = 0.65;
 const VARIANCE_SCALE: f32 = 0.008;
+const DOMINANT_COVERAGE_FLOOR: f32 = 0.10;
 const OVERLAY_SHARE_LIMIT: f32 = 0.25;
 const OVERLAY_BLEND: f32 = 0.7;
+const COLORED_COVERAGE_FLOOR: f32 = 0.18;
 
 #[derive(Clone, Copy, Default)]
 struct Moment {
@@ -26,6 +28,7 @@ impl Moment {
     }
 }
 
+#[derive(Clone, Copy)]
 pub(super) struct Observation {
     pub rgb: Vector,
     pub lab: Vector,
@@ -53,6 +56,41 @@ impl Observation {
             hue_bin,
             hue_fraction,
         }
+    }
+
+    #[inline]
+    pub fn from_pixel(pixel: [u8; 3]) -> Self {
+        Self::new(super::color::linear(pixel))
+    }
+}
+
+const OBSERVATION_CACHE_SIZE: usize = 64;
+
+pub(super) struct ObservationCache {
+    entries: [Option<(u32, Observation)>; OBSERVATION_CACHE_SIZE],
+}
+
+impl Default for ObservationCache {
+    fn default() -> Self {
+        Self {
+            entries: [None; OBSERVATION_CACHE_SIZE],
+        }
+    }
+}
+
+impl ObservationCache {
+    #[inline]
+    pub fn get(&mut self, pixel: [u8; 3]) -> Observation {
+        let key = u32::from_be_bytes([0, pixel[0], pixel[1], pixel[2]]);
+        let index = (key.wrapping_mul(0x9e37_79b9) >> 26) as usize;
+        if let Some((cached_key, observation)) = self.entries[index] {
+            if cached_key == key {
+                return observation;
+            }
+        }
+        let observation = Observation::from_pixel(pixel);
+        self.entries[index] = Some((key, observation));
+        observation
     }
 }
 
@@ -99,6 +137,12 @@ impl Spectrum {
 
     pub fn resolve(&self) -> Vector {
         let mut average = self.all.mean();
+        let coverage = self.colored.mass / self.all.mass.max(EPSILON);
+        // When most of a cone is neutral, attenuate a small saturated patch
+        // before dominant-hue enhancement. Full-screen dark colours still
+        // have full coverage and retain their intended chroma.
+        let colored_gate = (coverage / COLORED_COVERAGE_FLOOR).clamp(0.0, 1.0);
+        average = mix(self.neutral.mean(), average, colored_gate);
         let neutral_share = self.neutral.mass / self.all.mass.max(EPSILON);
         // Only suppress small bright neutral overlays in predominantly colored
         // content; neutral/white scenes retain their actual white point.
@@ -114,8 +158,17 @@ impl Spectrum {
         let variance = (self.lab_square / self.all.mass.max(EPSILON)
             - super::color::dot(mean_lab, mean_lab))
         .max(0.0);
-        let coverage = self.colored.mass / self.all.mass.max(EPSILON);
-        let blend = DOMINANT_BLEND * confidence * coverage * variance / (variance + VARIANCE_SCALE);
+        // A small colored accent must not repaint an otherwise dark/neutral
+        // zone. Require colored coverage twice: once for confidence and again
+        // as an area penalty. Full-screen saturated scenes keep their
+        // dominant-hue enhancement while subtitles, progress bars and
+        // isolated highlights stay local to the samples that contain them.
+        // Ramp the dominant hue in only after a meaningful part of the cone
+        // carries colour. This keeps a thin status bar or a protected-video
+        // overlay from turning an otherwise neutral top zone blue.
+        let coverage_gate = (coverage / DOMINANT_COVERAGE_FLOOR).clamp(0.0, 1.0);
+        let blend = DOMINANT_BLEND * confidence * coverage * coverage * coverage_gate * variance
+            / (variance + VARIANCE_SCALE);
         let matched = match_luminance(dominant, luminance(average));
         mix(average, matched, blend)
     }
@@ -155,4 +208,22 @@ fn match_luminance(rgb: Vector, target: f32) -> Vector {
     let scale = target / luminance(rgb).max(EPSILON);
     let peak = rgb.iter().copied().fold(EPSILON, f32::max);
     rgb.map(|v| v * scale.min(1.0 / peak))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ObservationCache;
+
+    #[test]
+    fn cache_collisions_never_change_observation_values() {
+        let mut cache = ObservationCache::default();
+        // Black and [0, 0, 34] intentionally share a direct-mapped slot.
+        let colors = [[0, 0, 0], [0, 0, 34], [1, 2, 3], [255, 127, 63]];
+        for pixel in colors {
+            assert_eq!(cache.get(pixel).rgb, super::super::color::linear(pixel));
+        }
+        for pixel in colors.into_iter().rev() {
+            assert_eq!(cache.get(pixel).rgb, super::super::color::linear(pixel));
+        }
+    }
 }

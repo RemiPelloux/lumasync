@@ -57,6 +57,15 @@ fn small_white_overlays_are_suppressed_but_white_scenes_remain_white() {
 }
 
 #[test]
+fn tiny_colored_accents_do_not_repaint_dark_neutral_zones() {
+    let dark = [0.015; 3];
+    let blue = linear([0, 0, 255]);
+    let actual = mixture(&[(dark, 0.94), (blue, 0.06)]);
+    assert!(actual[2] < 0.14, "unexpected blue lift: {actual:?}");
+    assert!((actual[0] - actual[1]).abs() < 0.01, "{actual:?}");
+}
+
+#[test]
 fn overlay_gate_has_no_threshold_jump() {
     let blue = linear([10, 40, 180]);
     let a = mixture(&[(blue, 0.801), ([1.0; 3], 0.199)]);
